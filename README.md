@@ -103,7 +103,7 @@ pipeline.WithTitles(notify.Titles{Success: titleFor(cmd)}).Success(ctx, body)
 
 | メソッド | 出力（Markdown） | Slack 表示 |
 | :--- | :--- | :--- |
-| `Field("Title", "夏の終わり")` | `**Title:** 夏の終わり` | **Title:** 夏の終わり |
+| `Field("Title", "サンプル")` | `**Title:** サンプル` | **Title:** サンプル |
 | `Code("Command", "compose")` | ``**Command:** `compose` `` | **Command:** `compose` |
 | `Link("Detail", url, "job-1")` | `**Detail:** [job-1](url)` | **Detail:** [job-1](url) |
 | `LinkOrField("Output", url, uri)` | url があればリンク、無ければ素の値 | 〃 |

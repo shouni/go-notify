@@ -51,7 +51,7 @@ func TestPipelineTitles(t *testing.T) {
 			rec := &recorder{}
 			p := notify.NewPipeline(rec, testTitles)
 
-			if err := tt.call(p, notify.NewBody().Code("Command", "compose")); err != nil {
+			if err := tt.call(p, notify.NewBody().Code("Command", "run_task")); err != nil {
 				t.Fatalf("通知に失敗しました: %v", err)
 			}
 			if len(rec.got) != 1 {
@@ -142,11 +142,11 @@ func TestPipelineFailureAppendsCause(t *testing.T) {
 	p := notify.NewPipeline(rec, testTitles)
 
 	body := notify.NewBody().Code("Job ID", "job-1")
-	if err := p.Failure(context.Background(), body, errors.New("Veo がタイムアウトしました")); err != nil {
+	if err := p.Failure(context.Background(), body, errors.New("タイムアウトしました")); err != nil {
 		t.Fatalf("通知に失敗しました: %v", err)
 	}
 
-	want := "**Job ID:** `job-1`\n\n**エラー内容:**\nVeo がタイムアウトしました"
+	want := "**Job ID:** `job-1`\n\n**エラー内容:**\nタイムアウトしました"
 	if rec.got[0].Body != want {
 		t.Errorf("Body = %q, want %q", rec.got[0].Body, want)
 	}
@@ -242,7 +242,7 @@ func TestPipelineWithTitles(t *testing.T) {
 	rec := &recorder{}
 	base := notify.NewPipeline(rec, testTitles)
 
-	err := base.WithTitles(notify.Titles{Success: "🎨 デザインシート生成が完了しました"}).
+	err := base.WithTitles(notify.Titles{Success: "🎨 別種の処理が完了しました"}).
 		Success(context.Background(), notify.NewBody().Field("Job ID", "job-1"))
 	if err != nil {
 		t.Fatalf("通知に失敗しました: %v", err)
@@ -251,7 +251,7 @@ func TestPipelineWithTitles(t *testing.T) {
 	if len(rec.got) != 1 {
 		t.Fatalf("送信件数 = %d, want 1", len(rec.got))
 	}
-	if got, want := rec.got[0].Title, "🎨 デザインシート生成が完了しました"; got != want {
+	if got, want := rec.got[0].Title, "🎨 別種の処理が完了しました"; got != want {
 		t.Errorf("Title = %q, want %q", got, want)
 	}
 }
@@ -321,7 +321,7 @@ func TestPipelineFailureAppendsToGivenBody(t *testing.T) {
 	rec := &recorder{}
 	p := notify.NewPipeline(rec, testTitles)
 
-	body := notify.NewBody().Field("Title", "曲名")
+	body := notify.NewBody().Field("Title", "サンプルタイトル")
 	if err := p.Failure(context.Background(), body, errors.New("原因")); err != nil {
 		t.Fatalf("通知に失敗しました: %v", err)
 	}

@@ -148,7 +148,7 @@ func TestNotifyRequiresTitle(t *testing.T) {
 func TestNotifyAppliesOptions(t *testing.T) {
 	stub := &stubRequester{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test",
-		slack.WithUsername("AP Comp"),
+		slack.WithUsername("Bot Name"),
 		slack.WithIconEmoji(":musical_note:"),
 		slack.WithChannel("#notifications"),
 	)
@@ -160,8 +160,8 @@ func TestNotifyAppliesOptions(t *testing.T) {
 		t.Fatalf("Notify() = %v, want nil", err)
 	}
 
-	if stub.sent.Username != "AP Comp" {
-		t.Errorf("Username = %q, want %q", stub.sent.Username, "AP Comp")
+	if stub.sent.Username != "Bot Name" {
+		t.Errorf("Username = %q, want %q", stub.sent.Username, "Bot Name")
 	}
 	if stub.sent.IconEmoji != ":musical_note:" {
 		t.Errorf("IconEmoji = %q, want %q", stub.sent.IconEmoji, ":musical_note:")
@@ -255,16 +255,16 @@ func TestNotifyRendersBodyAsMrkdwn(t *testing.T) {
 	}
 
 	body := notify.NewBody().
-		Code("Command", "compose_video").
-		Field("Title", "夏の終わり").
+		Code("Command", "run_task").
+		Field("Title", "サンプルタイトル").
 		Link("History Detail", "https://example.com/web/history/job-1", "job-1")
 
 	if err := n.Notify(context.Background(), notify.Message{Title: "✅ 完了", Body: body.String()}); err != nil {
 		t.Fatalf("Notify() = %v, want nil", err)
 	}
 
-	want := "*Command:* `compose_video`\n" +
-		"*Title:* 夏の終わり\n" +
+	want := "*Command:* `run_task`\n" +
+		"*Title:* サンプルタイトル\n" +
 		"*History Detail:* <https://example.com/web/history/job-1|job-1>"
 	if got := stub.sectionText(t); got != want {
 		t.Errorf("セクション本文 =\n%q\nwant\n%q", got, want)
@@ -280,14 +280,14 @@ func TestNotifyRendersErrorBlockAsMrkdwn(t *testing.T) {
 		t.Fatalf("NewNotifier() = %v, want nil", err)
 	}
 
-	body := notify.NewBody().Code("Job ID", "job-1").Error("エラー内容", errors.New("Veo がタイムアウト"))
+	body := notify.NewBody().Code("Job ID", "job-1").Error("エラー内容", errors.New("タイムアウトしました"))
 
 	if err := n.Notify(context.Background(), notify.Message{Title: "❌ 失敗", Body: body.String()}); err != nil {
 		t.Fatalf("Notify() = %v, want nil", err)
 	}
 
 	got := stub.sectionText(t)
-	if !strings.Contains(got, "*エラー内容:*\nVeo がタイムアウト") {
+	if !strings.Contains(got, "*エラー内容:*\nタイムアウトしました") {
 		t.Errorf("エラー節が mrkdwn に変換されていません: %q", got)
 	}
 }

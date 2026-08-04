@@ -41,8 +41,8 @@ func TestFormatMarkdownConversions(t *testing.T) {
 		},
 		{
 			name: "インラインコードはそのまま通る",
-			in:   "`compose_video`",
-			want: "`compose_video`",
+			in:   "`run_task`",
+			want: "`run_task`",
 		},
 	}
 
@@ -97,11 +97,11 @@ func TestFormatMarkdownEscapesSpecialCharacters(t *testing.T) {
 // 署名が変わって URL が 403 になるため、エスケープ範囲を誤ると壊れる側の
 // 代表例として、実在の署名付き URL に近い形で固定します。
 func TestFormatMarkdownSignedURLIsNotEscaped(t *testing.T) {
-	const signedURL = "https://storage.googleapis.com/bucket/song.wav" +
-		"?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Expires=604800&X-Goog-Signature=abc123"
+	const signedURL = "https://storage.example.com/bucket/artifact.bin" +
+		"?Algorithm=RSA-SHA256&Expires=604800&Signature=abc123"
 
-	got := formatMarkdown("**Audio File:** [gs://bucket/song.wav](" + signedURL + ")")
-	want := "*Audio File:* <" + signedURL + "|gs://bucket/song.wav>"
+	got := formatMarkdown("**Artifact:** [gs://bucket/artifact.bin](" + signedURL + ")")
+	want := "*Artifact:* <" + signedURL + "|gs://bucket/artifact.bin>"
 
 	if got != want {
 		t.Errorf("formatMarkdown() =\n%q\nwant\n%q", got, want)
