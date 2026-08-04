@@ -94,7 +94,9 @@ The sibling repo `ap-mcp-slack` reached the opposite default for the same reason
 
 Truncation is rune-based (`utf8.RuneCountInString` / `go-utils/text.Truncate`), never byte-based — messages are Japanese.
 
-Config comes from the environment at the call site, never inside the package: `SLACK_WEBHOOK_URL`, `SLACK_USERNAME`, `SLACK_ICON_EMOJI`, `SLACK_CHANNEL`.
+Config comes from the environment at the call site, never inside the package. In practice only `SLACK_WEBHOOK_URL` is read: none of the six services wire `WithUsername` / `WithIconEmoji` / `WithChannel`, and that is not an oversight — an Incoming Webhook owned by a Slack app ignores `username` and `icon_emoji` unless the app holds `chat:write.customize`, so the overrides are inert in this setup.
+
+The display fields therefore have no defaults. They used to be seeded with `Bot` / `:robot_face:`, which was invisible only because Slack was discarding them; granting the scope would have silently renamed every notification's sender to `Bot`. Empty means the fields are omitted from the payload and the webhook's own app identity stands. `TestNotifyOmitsDisplayOverridesByDefault` pins it.
 
 ## Conventions
 

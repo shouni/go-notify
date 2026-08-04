@@ -11,13 +11,6 @@ import (
 	"github.com/slack-go/slack"
 )
 
-const (
-	// defaultUsername はデフォルトのユーザー名です。
-	defaultUsername = "Bot"
-	// defaultIconEmoji はデフォルトの絵文字アイコンを表します。
-	defaultIconEmoji = ":robot_face:"
-)
-
 // levelColors は結果の種別を Slack の attachment の色に対応させます。
 // good / danger / warning は Slack 側の組み込みキーワードです。
 //
@@ -30,6 +23,14 @@ var levelColors = map[notify.Level]string{
 }
 
 // notifier は Slack Incoming Webhook へ通知を投稿します。
+//
+// username / iconEmoji / channel は既定値を持ちません。空のまま送れば
+// Slack 側で省略され、Webhook を持つアプリ自身の名前とアイコンが使われます。
+// 表示名を勝手に決めないのは、それが通知の送り主の同一性そのものだからです。
+//
+// なお Slack アプリ経由で作った Webhook は、chat:write.customize スコープが
+// 無いとこれらの上書きを無視します。With 系オプションを設定しても表示が
+// 変わらない場合は、コード側ではなくスコープを疑ってください。
 type notifier struct {
 	client     httpkit.Requester
 	webhookURL string
@@ -77,8 +78,6 @@ func NewNotifier(client httpkit.Requester, webhookURL string, opts ...Option) (n
 	n := &notifier{
 		client:     client,
 		webhookURL: webhookURL,
-		username:   defaultUsername,
-		iconEmoji:  defaultIconEmoji,
 	}
 
 	for _, opt := range opts {

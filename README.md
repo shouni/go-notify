@@ -152,11 +152,18 @@ body.Field("ブランチ", notify.CodeSpan(base)+" ← "+notify.CodeSpan(feature
 
 ```go
 notifier, err := slack.NewNotifier(httpClient, webhookURL,
-    slack.WithUsername("AP MV"),
-    slack.WithIconEmoji(":clapper:"),
+    slack.WithUsername("Release Bot"),
+    slack.WithIconEmoji(":rocket:"),
     slack.WithChannel("#notifications"),   // Webhook 側の設定を上書き
 )
 ```
+
+**既定値はありません。** 指定しなければこれらは送られず、Webhook を持つ
+Slack アプリ自身の名前とアイコンで投稿されます。
+
+> ⚠️ Slack アプリ経由で作成した Incoming Webhook は、`chat:write.customize`
+> スコープが無いと `username` / `icon_emoji` の上書きを**無視します**。
+> オプションを設定しても表示が変わらない場合は、コードではなくスコープを疑ってください。
 
 ---
 

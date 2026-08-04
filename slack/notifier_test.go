@@ -144,6 +144,34 @@ func TestNotifyRequiresTitle(t *testing.T) {
 	}
 }
 
+// TestNotifyOmitsDisplayOverridesByDefault は、表示設定を指定しなければ
+// ペイロードに含まれないことを検証します。
+//
+// 空なら Slack 側で省略され、Webhook を持つアプリ自身の名前とアイコンが使われます。
+// ここに既定値を入れると、アプリの表示名を名乗れるようになった環境で
+// 通知の送り主が突然その既定値に化けます。
+func TestNotifyOmitsDisplayOverridesByDefault(t *testing.T) {
+	stub := &stubRequester{}
+	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
+	if err != nil {
+		t.Fatalf("NewNotifier() = %v, want nil", err)
+	}
+
+	if err := n.Notify(context.Background(), notify.Message{Title: "件名", Body: "本文"}); err != nil {
+		t.Fatalf("Notify() = %v, want nil", err)
+	}
+
+	if stub.sent.Username != "" {
+		t.Errorf("Username = %q, want empty", stub.sent.Username)
+	}
+	if stub.sent.IconEmoji != "" {
+		t.Errorf("IconEmoji = %q, want empty", stub.sent.IconEmoji)
+	}
+	if stub.sent.Channel != "" {
+		t.Errorf("Channel = %q, want empty", stub.sent.Channel)
+	}
+}
+
 // TestNotifyAppliesOptions は、表示のカスタマイズがペイロードに反映されることを検証します。
 func TestNotifyAppliesOptions(t *testing.T) {
 	stub := &stubRequester{}
