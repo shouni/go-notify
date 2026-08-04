@@ -118,16 +118,16 @@ pipeline.WithTitles(notify.Titles{Success: titleFor(cmd)}).Success(ctx, body)
 `Block` の中身は各チャネルの記法変換の対象外です。コマンド出力やログを
 原文のまま見せるための入口なので、`- ` や `**` が書き換わることはありません。
 
-### 等幅の値を組み合わせる
+### 値をコードスパンにする
 
 `Code` は「ラベル + 単一の値」しか作れません。単位や絵文字を添えたい、
-1 行に複数の等幅の値を並べたい場合は `Mono` を使います。
+1 行に複数の等幅の値を並べたい場合は `CodeSpan` を使います。
 本文の Markdown 記法を知る場所を `notify` パッケージの中に留めるための出口なので、
 呼び出し側でバックティックを直接書かないでください。
 
 ```go
-body.Field("Seed", notify.Mono(strconv.Itoa(seed))+" 🎲")
-body.Field("ブランチ", notify.Mono(base)+" ← "+notify.Mono(feature))
+body.Field("Seed", notify.CodeSpan(strconv.Itoa(seed))+" 🎲")
+body.Field("ブランチ", notify.CodeSpan(base)+" ← "+notify.CodeSpan(feature))
 ```
 
 ### 結果の種別（Level）

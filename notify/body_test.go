@@ -176,8 +176,8 @@ func TestBodyBlockFencesAreOnTheirOwnLines(t *testing.T) {
 	}
 }
 
-// TestMono は等幅記法のヘルパーを検証します。
-func TestMono(t *testing.T) {
+// TestCodeSpan はコードスパンのヘルパーを検証します。
+func TestCodeSpan(t *testing.T) {
 	tests := []struct {
 		name string
 		in   string
@@ -190,21 +190,21 @@ func TestMono(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := notify.Mono(tt.in); got != tt.want {
-				t.Errorf("Mono() = %q, want %q", got, tt.want)
+			if got := notify.CodeSpan(tt.in); got != tt.want {
+				t.Errorf("CodeSpan() = %q, want %q", got, tt.want)
 			}
 		})
 	}
 }
 
-// TestMonoComposesWithField は、Mono が Field と組み合わせて
+// TestCodeSpanComposesWithField は、CodeSpan が Field と組み合わせて
 // 「ラベル + 単一の値」に収まらない行を作れることを検証します。
 // これが無いと呼び出し側がバックティックを直書きし、本文の記法を知る場所が
 // notify パッケージの外へ漏れます。
-func TestMonoComposesWithField(t *testing.T) {
+func TestCodeSpanComposesWithField(t *testing.T) {
 	b := notify.NewBody()
-	b.Field("Seed", notify.Mono("42")+" 🎲").
-		Field("ブランチ", notify.Mono("main")+" ← "+notify.Mono("develop"))
+	b.Field("Seed", notify.CodeSpan("42")+" 🎲").
+		Field("ブランチ", notify.CodeSpan("main")+" ← "+notify.CodeSpan("develop"))
 
 	want := "**Seed:** `42` 🎲\n**ブランチ:** `main` ← `develop`"
 	if got := b.String(); got != want {
@@ -212,11 +212,11 @@ func TestMonoComposesWithField(t *testing.T) {
 	}
 }
 
-// TestMonoOfEmptyValueSkipsLine は、空の値を Mono に通しても
+// TestCodeSpanOfEmptyValueSkipsLine は、空の値を CodeSpan に通しても
 // Field の「空なら行ごと省く」性質が保たれることを検証します。
-func TestMonoOfEmptyValueSkipsLine(t *testing.T) {
+func TestCodeSpanOfEmptyValueSkipsLine(t *testing.T) {
 	b := notify.NewBody()
-	b.Field("Seed", notify.Mono(""))
+	b.Field("Seed", notify.CodeSpan(""))
 
 	if !b.Empty() {
 		t.Errorf("Empty() = false, 本文 = %q", b.String())
