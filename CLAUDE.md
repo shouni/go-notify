@@ -30,6 +30,7 @@ notify/       # the channel-agnostic abstraction
   body.go       # Body — notification body builder
   pipeline.go   # Pipeline — success / failure / skipped triple, WithTitles for per-call headings
 slack/        # Slack Incoming Webhook implementation
+docs/slack.md # Slack-specific reference; README stays channel-agnostic
 ```
 
 Both packages live in subdirectories; nothing sits at the module root. That matches every other library in this family (`go-http-kit/httpkit`, `go-remote-io/remoteio`, `go-utils/*`) — `clibase` is the only sibling with a root package. The import path therefore repeats the name (`github.com/shouni/go-notify/notify`), exactly as `go-remote-io/remoteio` does.

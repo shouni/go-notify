@@ -15,6 +15,8 @@ CLI は持たず、アプリケーションに組み込んで使います。
 通知チャネルに依存しない `notify` パッケージと、その実装である `slack` パッケージに
 分かれており、**本文を組み立てるコードはチャネルを意識しません**。
 
+Slack 固有の話（記法の変換・リトライ・制限）は [docs/slack.md](docs/slack.md) にまとめてあります。
+
 ### 主要な特徴
 
 * **チャネル非依存の本文組み立て**
@@ -50,7 +52,7 @@ import (
     "github.com/shouni/go-notify/slack"
 )
 
-// Webhook 投稿は非冪等なので、リトライは切っておくのが安全です（下記の注意を参照）
+// Webhook 投稿は非冪等なので、リトライは切っておくのが安全です（docs/slack.md を参照）
 notifier, err := slack.NewNotifier(httpClient.WithoutRetry(), os.Getenv("SLACK_WEBHOOK_URL"))
 if err != nil {
     return err
@@ -139,74 +141,26 @@ body.Field("ブランチ", notify.CodeSpan(base)+" ← "+notify.CodeSpan(feature
 `Message.Level` は結果の種別を運びます。`Pipeline` を使えば自動で設定されるため、
 呼び出し側で指定する必要はありません。
 
-| Level | Pipeline のメソッド | Slack の表示 |
-| :--- | :--- | :--- |
-| `LevelSuccess` | `Success` | attachment の色帯 `good`（緑） |
-| `LevelFailure` | `Failure` | `danger`（赤） |
-| `LevelSkipped` | `Skipped` | `warning`（黄） |
-| `LevelNone`（ゼロ値） | — | 色なし（トップレベル blocks のまま） |
+| Level | Pipeline のメソッド |
+| :--- | :--- |
+| `LevelSuccess` | `Success` |
+| `LevelFailure` | `Failure` |
+| `LevelSkipped` | `Skipped` |
+| `LevelNone`（ゼロ値） | — |
 
+どう表現するかは各チャネルの判断です（Slack は attachment の色帯にします）。
 見出しに `✅` `❌` を書いて結果を示す必要はなくなりますが、残しても構いません。
 `Message` を直接組み立てている場合は `LevelNone` のままなので、表示は変わりません。
 
 ## 📐 プロジェクト構成
 
-```text
-go-notify/
-├── notify/       # チャネル非依存の抽象
-│   ├── notify.go     # Notifier / Message / Level / Disabled
-│   ├── body.go       # Body: 通知本文のビルダー（標準 Markdown を出力）
-│   └── pipeline.go   # Pipeline: 成功・失敗・スキップの定型通知
-└── slack/        # Slack Incoming Webhook 実装
-    ├── notifier.go   # NewNotifier / Notify: 唯一の入口
-    └── blocks.go     # mrkdwn 変換・エスケープ・Block Kit 組み立て
-```
+| パッケージ | 役割 |
+| :--- | :--- |
+| [`notify`](https://pkg.go.dev/github.com/shouni/go-notify/notify) | チャネル非依存の抽象。`Notifier` / `Message` / `Body` / `Pipeline` |
+| [`slack`](https://pkg.go.dev/github.com/shouni/go-notify/slack) | Slack Incoming Webhook 実装 → [docs/slack.md](docs/slack.md) |
 
-新しいチャネルを追加する場合は、`notify.Notifier` を実装したサブパッケージを
-追加するだけです。`notify` 側の変更は不要です。
-
-## ⚠️ リトライについて
-
-**Webhook への投稿は非冪等です。** 成功するたびに新しいメッセージが作られるため、
-Slack には届いたのにレスポンスを取りこぼしてリトライすると、同じ通知が二重に投稿されます。
-
-本ライブラリはリトライ方針を持たず、渡された `httpkit.Requester` をそのまま使います。
-`httpkit.New(timeout)` は既定でリトライが有効なので、**他の用途と 1 つのクライアントを
-共有していると重複投稿が起こり得ます**。
-
-`WithoutRetry` で派生させれば、既存のクライアントのタイムアウト・SSRF 対策・
-コネクションプールを共有したまま、通知経路だけリトライを切れます。
-
-```go
-notifier, err := slack.NewNotifier(httpClient.WithoutRetry(), webhookURL)
-```
-
-クライアント全体でリトライが不要なら `httpkit.New(timeout, httpkit.WithNoRetry())` でも構いません。
-
-「通知の取りこぼし」と「重複投稿」のどちらを避けたいかはアプリケーション側の判断なので、
-ライブラリでは決めていません。
-
-## 🎨 Slack の記法変換について
-
-`slack` パッケージは、`Body` が出力する標準 Markdown を Slack mrkdwn に変換します。
-
-* `**太字**` → `*太字*`、`## 見出し` → `*見出し*`、`- 項目` → `• 項目`
-* `[表示テキスト](URL)` → `<URL|表示テキスト>`
-* プレーンテキスト中の `&` `<` `>` を実体参照へエスケープ
-  （エラー文中の `<nil>` がリンク構文と誤認されるのを防ぎます）
-
-エスケープ対象は**プレーンテキストのみ**です。`<URL|表示テキスト>` の内側や
-`<@U123>` などのメンションは Slack が構文として解釈済みのため変換しません。
-署名付き URL に含まれる `&` をエスケープすると署名が変わって 403 になるため、
-この境界は意図的なものです。
-
-記法変換の対象外がもう 1 つあります。フェンス（行頭の ` ``` `）で囲まれた
-コードブロックの中身です。`Body.Block` はコマンド出力やログを原文のまま
-見せるためのものなので、そこで `- ` が `• ` に、`**text**` が `*text*` に
-書き換わると、貼った本人が見たい原文が壊れます。
-ただし `&` `<` `>` のエスケープはブロック内でも必要なため、記法変換とは分けて適用します。
-
----
+`slack` は `notify` に依存しますが、逆はありません。新しいチャネルを追加する場合は
+`notify.Notifier` を実装したサブパッケージを足すだけで、`notify` 側の変更は不要です。
 
 ## 📜 ライセンス
 
