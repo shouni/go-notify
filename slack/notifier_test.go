@@ -148,8 +148,8 @@ func TestNotifyRequiresTitle(t *testing.T) {
 // ペイロードに含まれないことを検証します。
 //
 // 空なら Slack 側で省略され、Webhook を持つアプリ自身の名前とアイコンが使われます。
-// ここに既定値を入れると、アプリの表示名を名乗れるようになった環境で
-// 通知の送り主が突然その既定値に化けます。
+// ここに既定値を入れると、上書きが効く環境（旧来の custom integration 版 Webhook）で、
+// ユーザーが Slack 側に設定した表示名をライブラリが黙って潰します。
 func TestNotifyOmitsDisplayOverridesByDefault(t *testing.T) {
 	stub := &stubRequester{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
