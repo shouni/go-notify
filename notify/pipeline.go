@@ -26,8 +26,7 @@ type Titles struct {
 //
 // 結果によって見出しが変わるだけで本文の組み立て方は共通、という
 // パイプライン系サービスの通知形をそのまま表現しています。
-// 見出しを実行時の条件で切り替えたい場合は、Pipeline を使わずに
-// Notifier と Body を直接組み合わせてください。
+// 見出しを実行時の条件で切り替えたい場合は WithTitles を使ってください。
 type Pipeline struct {
 	notifier Notifier
 	titles   Titles
@@ -40,6 +39,21 @@ func NewPipeline(notifier Notifier, titles Titles) *Pipeline {
 		notifier = Disabled()
 	}
 	return &Pipeline{notifier: notifier, titles: titles}
+}
+
+// WithTitles は見出しだけを差し替えた Pipeline を返します。元の Pipeline は変更しません。
+//
+// 見出しを実行時の条件で決めたい場合に使います（コマンドの種別ごとに完了通知の
+// 文言を変える、など）。titles は元の見出しとマージせず、そのまま置き換えます。
+// 使う結果の見出しだけ埋めれば十分です。
+//
+//	p.WithTitles(Titles{Success: titleFor(cmd)}).Success(ctx, body)
+//
+// これが無いと、見出しを切り替えたい呼び出し側は Pipeline を捨てて Notifier を
+// 直接使うことになり、Enabled の判定と失敗時のエラー節の組み立てを各自で
+// 再実装することになります。
+func (p *Pipeline) WithTitles(titles Titles) *Pipeline {
+	return &Pipeline{notifier: p.notifier, titles: titles}
 }
 
 // Enabled は通知が有効かどうかを返します。

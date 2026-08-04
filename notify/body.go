@@ -5,6 +5,9 @@ import (
 	"strings"
 )
 
+// codeFence は Block が使うコードブロックのフェンスです。
+const codeFence = "```"
+
 // Body は通知本文を組み立てるビルダーです。
 //
 // 各メソッドは値が空の場合に何も書き込まないため、呼び出し側は
@@ -42,11 +45,14 @@ func (b *Body) Field(label, value string) *Body {
 
 // Code は「**ラベル:** `値`」の 1 行を追記します。値が空の場合は何もしません。
 // 識別子やコマンド名など、等幅で表示したい短い値に使用します。
+//
+// 等幅の値に単位や絵文字を添えたい、1 行に複数の等幅の値を並べたいなど、
+// 「ラベル + 単一の値」に収まらない場合は Mono と Field を組み合わせてください。
 func (b *Body) Code(label, value string) *Body {
 	if value == "" {
 		return b
 	}
-	b.writeLine(fmt.Sprintf("**%s:** `%s`", label, sanitizeBacktick(value)))
+	b.writeLine(fmt.Sprintf("**%s:** %s", label, Mono(value)))
 	return b
 }
 
@@ -61,6 +67,19 @@ func (b *Body) Link(label, url, text string) *Body {
 	}
 	b.writeLine(fmt.Sprintf("**%s:** [%s](%s)", label, text, url))
 	return b
+}
+
+// LinkOrField は、url があればリンクとして、無ければ text をそのまま値として追記します。
+// url と text がどちらも空の場合は何もしません。
+//
+// リンク先が任意な項目のための入口です。ストレージ上の成果物のように、
+// 参照先 URL を作れることもあれば URI しか手元に無いこともある項目で、
+// 呼び出し側が毎回同じ分岐を書くのを避けます。
+func (b *Body) LinkOrField(label, url, text string) *Body {
+	if url == "" {
+		return b.Field(label, text)
+	}
+	return b.Link(label, url, text)
 }
 
 // Error は「**ラベル:**」に続けてエラー内容を追記します。
@@ -83,13 +102,20 @@ func (b *Body) Error(label string, err error) *Body {
 //
 // content 中のバックティックは ' に置き換えます。エラー文字列などに
 // バックティックが含まれるとコードブロックがそこで閉じてしまうためです。
+//
+// フェンスは開始・終了とも独立した行に置きます。Markdown ではフェンスの
+// 開始行の残りが言語指定として解釈されるため、```内容``` と 1 行に詰めると
+// content の 1 行目が言語名として食われ、終了フェンスも行頭に無いので
+// ブロックが閉じません。
 func (b *Body) Block(label, content string) *Body {
 	if content == "" {
 		content = NotAvailable
 	}
 	b.separate()
 	b.writeLine(fmt.Sprintf("**%s:**", label))
-	b.writeLine("```" + sanitizeBacktick(content) + "```")
+	b.writeLine(codeFence)
+	b.writeLine(sanitizeBacktick(content))
+	b.writeLine(codeFence)
 	return b
 }
 
@@ -118,6 +144,23 @@ func (b *Body) separate() {
 	if !b.Empty() {
 		b.sb.WriteString("\n")
 	}
+}
+
+// Mono は s を等幅表示の記法で包んだ文字列を返します。s が空の場合は空文字を返すため、
+// そのまま Field へ渡せば行ごと省かれます。
+//
+// Body のメソッドは「ラベル + 単一の値」しか組み立てられないため、単位や絵文字を
+// 添えたい呼び出し側がバックティックを直書きしがちです。しかし本文の Markdown 記法を
+// 知るのは本パッケージだけ、というのがチャネル非依存を成り立たせている境界なので、
+// 記法を書く必要がある場合の出口をここに用意します。
+//
+//	body.Field("Seed", notify.Mono(strconv.Itoa(seed))+" 🎲")
+//	body.Field("ブランチ", notify.Mono(base)+" ← "+notify.Mono(feature))
+func Mono(s string) string {
+	if s == "" {
+		return ""
+	}
+	return "`" + sanitizeBacktick(s) + "`"
 }
 
 // sanitizeBacktick は等幅表示を壊すバックティックを ' に置き換えます。

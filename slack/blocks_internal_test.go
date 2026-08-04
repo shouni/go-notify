@@ -118,6 +118,58 @@ func TestFormatMarkdownExistingLinkIsNotEscaped(t *testing.T) {
 	}
 }
 
+// TestFormatMarkdownPreservesCodeBlockContent は、コードブロックの中身が
+// 記法変換の対象外であることを検証します。
+//
+// コードブロックはエラー出力やコマンドのログを原文のまま見せるためのものなので、
+// - が • に、**text** が *text* に書き換わると、貼った本人が見たい原文が壊れます。
+// TestFormatMarkdownConversions とは正反対の性質を守っており、
+// 片方だけ変えるともう片方が落ちます。
+func TestFormatMarkdownPreservesCodeBlockContent(t *testing.T) {
+	in := "**エラー詳細:**\n```\nusage:\n- foo **bar**\n## heading\n```"
+	want := "*エラー詳細:*\n```\nusage:\n- foo **bar**\n## heading\n```"
+
+	if got := formatMarkdown(in); got != want {
+		t.Errorf("formatMarkdown() =\n%q\nwant\n%q", got, want)
+	}
+}
+
+// TestFormatMarkdownEscapesInsideCodeBlock は、コードブロックの中でも
+// Slack が特殊解釈する 3 文字がエスケープされることを検証します。
+// 記法変換の対象外であることと、エスケープが不要であることは別です。
+func TestFormatMarkdownEscapesInsideCodeBlock(t *testing.T) {
+	in := "```\nexpected <nil>, got a&b\n```"
+	want := "```\nexpected &lt;nil&gt;, got a&amp;b\n```"
+
+	if got := formatMarkdown(in); got != want {
+		t.Errorf("formatMarkdown() = %q, want %q", got, want)
+	}
+}
+
+// TestFormatMarkdownConvertsAroundCodeBlock は、コードブロックの前後が
+// 通常どおり変換されることを検証します。保護範囲がブロック外へ漏れると、
+// 本文の太字やリンクが素の Markdown のまま Slack に出ます。
+func TestFormatMarkdownConvertsAroundCodeBlock(t *testing.T) {
+	in := "**前:** [x](https://example.com)\n```\n- そのまま\n```\n- 後"
+	want := "*前:* <https://example.com|x>\n```\n- そのまま\n```\n• 後"
+
+	if got := formatMarkdown(in); got != want {
+		t.Errorf("formatMarkdown() =\n%q\nwant\n%q", got, want)
+	}
+}
+
+// TestFormatMarkdownUnterminatedFenceIsNotProtected は、閉じフェンスが無い場合に
+// 保護を諦めて通常変換することを検証します。壊れたフェンス 1 つで以降の本文
+// すべてが変換対象外になる方が、被害が大きいためです。
+func TestFormatMarkdownUnterminatedFenceIsNotProtected(t *testing.T) {
+	in := "```\n- item"
+	want := "```\n• item"
+
+	if got := formatMarkdown(in); got != want {
+		t.Errorf("formatMarkdown() = %q, want %q", got, want)
+	}
+}
+
 // TestBuildSectionTextEmpty は、空白のみの本文がセクションを生まないことを検証します。
 func TestBuildSectionTextEmpty(t *testing.T) {
 	if got := buildSectionText("   \n  "); got != "" {

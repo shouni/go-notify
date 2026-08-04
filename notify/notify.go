@@ -15,7 +15,15 @@ const NotAvailable = "N/A"
 type Message struct {
 	// Title は通知の見出しです。
 	Title string
-	// Body は通知の本文です。Slack mrkdwn 記法を含められます。
+	// Body は通知の本文です。
+	//
+	// 記法はチャネル非依存の標準 Markdown です（太字は **強調**、
+	// リンクは [表示テキスト](URL)）。各チャネルの方言への変換は送信側の
+	// 責務なので、ここに Slack mrkdwn（*強調* や <URL|表示テキスト>）を
+	// 直接書かないでください。書いた時点で、その本文は Slack 以外の
+	// チャネルへ送れなくなります。
+	//
+	// 本文の組み立てには Body を使ってください。
 	Body string
 }
 

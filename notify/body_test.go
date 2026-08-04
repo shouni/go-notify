@@ -134,7 +134,7 @@ func TestBodyBlockSanitizesBacktick(t *testing.T) {
 	b := notify.NewBody()
 	b.Block("エラー詳細", "exec `gsutil` failed")
 
-	want := "**エラー詳細:**\n```exec 'gsutil' failed```"
+	want := "**エラー詳細:**\n```\nexec 'gsutil' failed\n```"
 	if got := b.String(); got != want {
 		t.Errorf("String() = %q, want %q", got, want)
 	}
@@ -156,8 +156,109 @@ func TestBodyBlockFallsBackToNotAvailable(t *testing.T) {
 	b := notify.NewBody()
 	b.Block("エラー詳細", "")
 
-	want := "**エラー詳細:**\n```" + notify.NotAvailable + "```"
+	want := "**エラー詳細:**\n```\n" + notify.NotAvailable + "\n```"
 	if got := b.String(); got != want {
 		t.Errorf("String() = %q, want %q", got, want)
+	}
+}
+
+// TestBodyBlockFencesAreOnTheirOwnLines は、フェンスが独立した行に置かれることを検証します。
+//
+// ```内容``` と 1 行に詰めると内容の 1 行目が言語指定として食われ、
+// 終了フェンスも行頭に無いのでブロックが閉じません。
+func TestBodyBlockFencesAreOnTheirOwnLines(t *testing.T) {
+	b := notify.NewBody()
+	b.Block("エラー詳細", "usage:\n  cmd --flag")
+
+	want := "**エラー詳細:**\n```\nusage:\n  cmd --flag\n```"
+	if got := b.String(); got != want {
+		t.Errorf("String() = %q, want %q", got, want)
+	}
+}
+
+// TestMono は等幅記法のヘルパーを検証します。
+func TestMono(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "値を等幅で包む", in: "compose_video", want: "`compose_video`"},
+		{name: "バックティックを ' に置き換える", in: "ls `pwd`", want: "`ls 'pwd'`"},
+		{name: "空文字は空文字のまま", in: "", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := notify.Mono(tt.in); got != tt.want {
+				t.Errorf("Mono() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestMonoComposesWithField は、Mono が Field と組み合わせて
+// 「ラベル + 単一の値」に収まらない行を作れることを検証します。
+// これが無いと呼び出し側がバックティックを直書きし、本文の記法を知る場所が
+// notify パッケージの外へ漏れます。
+func TestMonoComposesWithField(t *testing.T) {
+	b := notify.NewBody()
+	b.Field("Seed", notify.Mono("42")+" 🎲").
+		Field("ブランチ", notify.Mono("main")+" ← "+notify.Mono("develop"))
+
+	want := "**Seed:** `42` 🎲\n**ブランチ:** `main` ← `develop`"
+	if got := b.String(); got != want {
+		t.Errorf("String() = %q, want %q", got, want)
+	}
+}
+
+// TestMonoOfEmptyValueSkipsLine は、空の値を Mono に通しても
+// Field の「空なら行ごと省く」性質が保たれることを検証します。
+func TestMonoOfEmptyValueSkipsLine(t *testing.T) {
+	b := notify.NewBody()
+	b.Field("Seed", notify.Mono(""))
+
+	if !b.Empty() {
+		t.Errorf("Empty() = false, 本文 = %q", b.String())
+	}
+}
+
+// TestBodyLinkOrField は、リンク先の有無による出し分けを検証します。
+func TestBodyLinkOrField(t *testing.T) {
+	tests := []struct {
+		name  string
+		build func(b *notify.Body)
+		want  string
+	}{
+		{
+			name:  "URL があればリンクにする",
+			build: func(b *notify.Body) { b.LinkOrField("Output", "https://example.com/o", "gs://bucket/o") },
+			want:  "**Output:** [gs://bucket/o](https://example.com/o)",
+		},
+		{
+			name:  "URL が無ければ素の値にする",
+			build: func(b *notify.Body) { b.LinkOrField("Output", "", "gs://bucket/o") },
+			want:  "**Output:** gs://bucket/o",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := notify.NewBody()
+			tt.build(b)
+			if got := b.String(); got != tt.want {
+				t.Errorf("String() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestBodyLinkOrFieldSkipsEmpty は、URL も値も無い場合に行が出ないことを検証します。
+func TestBodyLinkOrFieldSkipsEmpty(t *testing.T) {
+	b := notify.NewBody()
+	b.LinkOrField("Output", "", "")
+
+	if !b.Empty() {
+		t.Errorf("Empty() = false, 本文 = %q", b.String())
 	}
 }
