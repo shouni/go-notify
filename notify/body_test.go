@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/shouni/go-notify"
+	"github.com/shouni/go-notify/notify"
 )
 
 // TestBodyWriters は各ライターの出力形式を検証します。

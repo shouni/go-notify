@@ -59,11 +59,18 @@ func (p *Pipeline) Failure(ctx context.Context, body *Body, cause error) error {
 	return p.send(ctx, p.titles.Failure, body)
 }
 
-// Skipped は処理をスキップしたことを、理由とともに通知します。
-// reason は本文の末尾に「理由」として追記されます。
+// Skipped は処理をスキップしたことを通知します。
+// reason が非 nil の場合のみ、本文の末尾に「理由」として追記されます。
+//
+// Failure と違い nil を N/A で埋めないのは、スキップの理由が任意だからです。
+// スキップは見出しだけで意味が通ることが多く（「差分がないためスキップしました」など）、
+// そこに「理由: N/A」を足しても情報が増えません。一方 Failure の原因が nil なのは
+// 想定外の状態なので、行を消さず N/A として残します。
 func (p *Pipeline) Skipped(ctx context.Context, body *Body, reason error) error {
 	body = orNewBody(body)
-	body.Error(reasonLabel, reason)
+	if reason != nil {
+		body.Error(reasonLabel, reason)
+	}
 	return p.send(ctx, p.titles.Skipped, body)
 }
 
