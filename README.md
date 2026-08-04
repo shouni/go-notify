@@ -50,10 +50,8 @@ import (
     "github.com/shouni/go-notify/slack"
 )
 
-// Webhook 投稿は非冪等なので、リトライは無効にしておくのが安全です（下記の注意を参照）
-httpClient := httpkit.New(timeout, httpkit.WithNoRetry())
-
-notifier, err := slack.NewNotifier(httpClient, os.Getenv("SLACK_WEBHOOK_URL"))
+// Webhook 投稿は非冪等なので、リトライは切っておくのが安全です（下記の注意を参照）
+notifier, err := slack.NewNotifier(httpClient.WithoutRetry(), os.Getenv("SLACK_WEBHOOK_URL"))
 if err != nil {
     return err
 }
@@ -147,11 +145,16 @@ Slack には届いたのにレスポンスを取りこぼしてリトライす�
 
 本ライブラリはリトライ方針を持たず、渡された `httpkit.Requester` をそのまま使います。
 `httpkit.New(timeout)` は既定でリトライが有効なので、**他の用途と 1 つのクライアントを
-共有していると重複投稿が起こり得ます**。通知用には無効化したものを渡してください。
+共有していると重複投稿が起こり得ます**。
+
+`WithoutRetry` で派生させれば、既存のクライアントのタイムアウト・SSRF 対策・
+コネクションプールを共有したまま、通知経路だけリトライを切れます。
 
 ```go
-notifyClient := httpkit.New(timeout, httpkit.WithNoRetry())
+notifier, err := slack.NewNotifier(httpClient.WithoutRetry(), webhookURL)
 ```
+
+クライアント全体でリトライが不要なら `httpkit.New(timeout, httpkit.WithNoRetry())` でも構いません。
 
 「通知の取りこぼし」と「重複投稿」のどちらを避けたいかはアプリケーション側の判断なので、
 ライブラリでは決めていません。

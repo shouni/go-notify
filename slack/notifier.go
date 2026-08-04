@@ -37,9 +37,10 @@ func (s *Client) Notify(ctx context.Context, msg notify.Message) error {
 //
 // 本パッケージはリトライ方針を持たず、client に渡されたものをそのまま使います。
 // 重複を避けたい場合は、リトライを無効化したクライアントを渡してください。
+// 既存のクライアントから派生させれば、タイムアウトや SSRF 対策の設定と
+// コネクションプールを共有したまま、通知経路だけリトライを切れます。
 //
-//	httpClient := httpkit.New(timeout, httpkit.WithNoRetry())
-//	notifier, err := slack.NewNotifier(httpClient, webhookURL)
+//	notifier, err := slack.NewNotifier(httpClient.WithoutRetry(), webhookURL)
 //
 // 既定の httpkit.New(timeout) はリトライが有効なので、他の用途と 1 つの
 // クライアントを共有していると重複投稿が起こり得ます。通知の取りこぼしと
