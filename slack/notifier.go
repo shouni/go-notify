@@ -11,13 +11,6 @@ import (
 	"github.com/slack-go/slack"
 )
 
-const (
-	// defaultUsername はデフォルトのユーザー名です。
-	defaultUsername = "Bot"
-	// defaultIconEmoji はデフォルトの絵文字アイコンを表します。
-	defaultIconEmoji = ":robot_face:"
-)
-
 // levelColors は結果の種別を Slack の attachment の色に対応させます。
 // good / danger / warning は Slack 側の組み込みキーワードです。
 //
@@ -30,19 +23,20 @@ var levelColors = map[notify.Level]string{
 }
 
 // notifier は Slack Incoming Webhook へ通知を投稿します。
+//
+// 投稿者の表示名・アイコン・投稿先チャンネルは指定しません。Slack アプリ経由で
+// 作った Incoming Webhook はこれらの上書きを受け付けず、常にアプリの設定を
+// 継承するためです（受け付けるのは Slack が非推奨とした custom integration 版だけ）。
+// サービスごとに表示を変えたい場合は、Slack アプリを分けてください。
 type notifier struct {
 	client     httpkit.Requester
 	webhookURL string
-	username   string
-	iconEmoji  string
-	channel    string
 }
 
 // notifier が notify.Notifier を満たすことを保証します。
 var _ notify.Notifier = (*notifier)(nil)
 
 // NewNotifier は Slack Incoming Webhook への notify.Notifier を生成します。
-// opts を指定すると、ユーザー名、アイコン絵文字、送信先チャンネルを上書きできます。
 //
 // webhookURL が空文字または空白のみの場合は、Slack 通知が設定されていない
 // ものとして notify.Disabled() を返します（理由は notify.Disabled を参照）。
@@ -66,7 +60,7 @@ var _ notify.Notifier = (*notifier)(nil)
 // クライアントを共有していると重複投稿が起こり得ます。通知の取りこぼしと
 // 重複のどちらを避けたいかはアプリケーション側の判断なので、ここでは
 // 決めません。
-func NewNotifier(client httpkit.Requester, webhookURL string, opts ...Option) (notify.Notifier, error) {
+func NewNotifier(client httpkit.Requester, webhookURL string) (notify.Notifier, error) {
 	if strings.TrimSpace(webhookURL) == "" {
 		return notify.Disabled(), nil
 	}
@@ -74,18 +68,7 @@ func NewNotifier(client httpkit.Requester, webhookURL string, opts ...Option) (n
 		return nil, errors.New("slack Webhook URLが設定されていますが、HTTPクライアントがnilです")
 	}
 
-	n := &notifier{
-		client:     client,
-		webhookURL: webhookURL,
-		username:   defaultUsername,
-		iconEmoji:  defaultIconEmoji,
-	}
-
-	for _, opt := range opts {
-		opt(n)
-	}
-
-	return n, nil
+	return &notifier{client: client, webhookURL: webhookURL}, nil
 }
 
 // Notify は notify.Notifier インターフェースを実装します。
@@ -117,22 +100,26 @@ func (n *notifier) buildWebhookMessage(msg notify.Message) (slack.WebhookMessage
 		return slack.WebhookMessage{}, fmt.Errorf("slack Block Kitの構築に失敗しました: %w", err)
 	}
 
-	payload := slack.WebhookMessage{
-		Text:      msg.Title,
-		Username:  n.username,
-		IconEmoji: n.iconEmoji,
-		Channel:   n.channel,
-	}
+	var payload slack.WebhookMessage
 
 	color, colored := levelColors[msg.Level]
 	if !colored {
+		// トップレベルの blocks がある場合、Text は本文として描画されず
+		// プッシュ通知などのフォールバックにだけ使われます。
+		payload.Text = msg.Title
 		payload.Blocks = &slack.Blocks{BlockSet: blocks}
 		return payload, nil
 	}
 
+	// attachment に包む場合は Text を空にします。blocks が attachment 側にあると
+	// Text はフォールバックではなくメッセージ本文として描画されるため、
+	// attachment 内の見出しブロックと合わせて見出しが 2 回出ます。
+	// フォールバックの役目は Attachment.Fallback が引き継ぐので、
+	// プッシュ通知の文言は失われません。
 	payload.Attachments = []slack.Attachment{{
-		Color:  color,
-		Blocks: slack.Blocks{BlockSet: blocks},
+		Color:    color,
+		Fallback: msg.Title,
+		Blocks:   slack.Blocks{BlockSet: blocks},
 	}}
 	return payload, nil
 }

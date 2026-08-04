@@ -144,33 +144,6 @@ func TestNotifyRequiresTitle(t *testing.T) {
 	}
 }
 
-// TestNotifyAppliesOptions は、表示のカスタマイズがペイロードに反映されることを検証します。
-func TestNotifyAppliesOptions(t *testing.T) {
-	stub := &stubRequester{}
-	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test",
-		slack.WithUsername("Bot Name"),
-		slack.WithIconEmoji(":musical_note:"),
-		slack.WithChannel("#notifications"),
-	)
-	if err != nil {
-		t.Fatalf("NewNotifier() = %v, want nil", err)
-	}
-
-	if err := n.Notify(context.Background(), notify.Message{Title: "件名", Body: "本文"}); err != nil {
-		t.Fatalf("Notify() = %v, want nil", err)
-	}
-
-	if stub.sent.Username != "Bot Name" {
-		t.Errorf("Username = %q, want %q", stub.sent.Username, "Bot Name")
-	}
-	if stub.sent.IconEmoji != ":musical_note:" {
-		t.Errorf("IconEmoji = %q, want %q", stub.sent.IconEmoji, ":musical_note:")
-	}
-	if stub.sent.Channel != "#notifications" {
-		t.Errorf("Channel = %q, want %q", stub.sent.Channel, "#notifications")
-	}
-}
-
 // TestNotifyLevelSetsAttachmentColor は、結果の種別が attachment の色になることを検証します。
 func TestNotifyLevelSetsAttachmentColor(t *testing.T) {
 	tests := []struct {
@@ -206,6 +179,35 @@ func TestNotifyLevelSetsAttachmentColor(t *testing.T) {
 				t.Error("attachment 使用時にトップレベル Blocks が設定されています")
 			}
 		})
+	}
+}
+
+// TestNotifyLevelDoesNotDuplicateTitle は、色付きの通知で見出しが 2 回出ないことを検証します。
+//
+// blocks が attachment 側にあると、トップレベルの Text はフォールバックではなく
+// メッセージ本文として描画されます。Text に見出しを入れたままだと、attachment 内の
+// 見出しブロックと合わせて Slack 上に見出しが 2 回並びます。
+// フォールバックは Attachment.Fallback が担うため、プッシュ通知の文言は残ります。
+func TestNotifyLevelDoesNotDuplicateTitle(t *testing.T) {
+	stub := &stubRequester{}
+	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
+	if err != nil {
+		t.Fatalf("NewNotifier() = %v, want nil", err)
+	}
+
+	msg := notify.Message{Title: "✅ 完了しました", Body: "本文", Level: notify.LevelSuccess}
+	if err := n.Notify(context.Background(), msg); err != nil {
+		t.Fatalf("Notify() = %v, want nil", err)
+	}
+
+	if stub.sent.Text != "" {
+		t.Errorf("Text = %q, want empty（attachment 内の見出しと重複します）", stub.sent.Text)
+	}
+	if len(stub.sent.Attachments) != 1 {
+		t.Fatalf("attachment 数 = %d, want 1", len(stub.sent.Attachments))
+	}
+	if got := stub.sent.Attachments[0].Fallback; got != msg.Title {
+		t.Errorf("Fallback = %q, want %q", got, msg.Title)
 	}
 }
 

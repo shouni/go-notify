@@ -30,6 +30,7 @@ notify/       # the channel-agnostic abstraction
   body.go       # Body — notification body builder
   pipeline.go   # Pipeline — success / failure / skipped triple, WithTitles for per-call headings
 slack/        # Slack Incoming Webhook implementation
+docs/slack.md # Slack-specific reference; README stays channel-agnostic
 ```
 
 Both packages live in subdirectories; nothing sits at the module root. That matches every other library in this family (`go-http-kit/httpkit`, `go-remote-io/remoteio`, `go-utils/*`) — `clibase` is the only sibling with a root package. The import path therefore repeats the name (`github.com/shouni/go-notify/notify`), exactly as `go-remote-io/remoteio` does.
@@ -62,6 +63,8 @@ Both packages live in subdirectories; nothing sits at the module root. That matc
 
 Rendering is the channel's call. `slack` maps the three levels to `good` / `danger` / `warning` and wraps the blocks in a coloured attachment; `LevelNone` stays as top-level blocks, because an attachment indents the body and there is no reason to change how existing, level-less notifications look.
 
+The two branches set the fallback text differently, and this is not cosmetic. With top-level `blocks`, Slack treats `WebhookMessage.Text` as fallback only and does not render it. Move the blocks into an attachment and `Text` becomes actual message body, so leaving the title there prints it twice — once as text, once in the attachment's header block. The coloured branch therefore leaves `Text` empty and puts the title in `Attachment.Fallback`, which keeps push-notification wording intact. `TestNotifyLevelDoesNotDuplicateTitle` pins it; v1.2.0 and v1.2.1 shipped without it and duplicated every heading.
+
 `NewNotifier` is the only exported constructor. A `NewClient` returning a concrete `*Client`, plus `SendText` / `SendTextWithHeader`, used to sit beneath it; all six consumers went through `NewNotifier` and none touched them, so they were removed rather than kept as a second way in.
 
 ### Slack escaping rules
@@ -86,17 +89,20 @@ The sibling repo `ap-mcp-slack` reached the opposite default for the same reason
 
 ### Slack package internals
 
-- `notifier.go` — the unexported `notifier` holds the requester, webhook URL, and display overrides. `NewNotifier` holds the disabled-vs-error policy above; `Notify` implements `notify.Notifier`. An empty `Message.Title` is an error, not a cue to guess: deriving a heading from the body's first line was a feature nothing used, and `Pipeline.send` already rejects an empty title, so the library said no through two separate paths.
-- `options.go` — `WithUsername`, `WithIconEmoji`, `WithChannel`.
+- `notifier.go` — the unexported `notifier` holds the requester and the webhook URL, nothing else. `NewNotifier` holds the disabled-vs-error policy above; `Notify` implements `notify.Notifier`. An empty `Message.Title` is an error, not a cue to guess: deriving a heading from the body's first line was a feature nothing used, and `Pipeline.send` already rejects an empty title, so the library said no through two separate paths.
 - `blocks.go` — Markdown→mrkdwn conversion, escaping, Block Kit assembly, and section truncation at `maxSectionLength` (2900 runes, under Slack's 3000 limit).
 
 Truncation is rune-based (`utf8.RuneCountInString` / `go-utils/text.Truncate`), never byte-based — messages are Japanese.
 
-Config comes from the environment at the call site, never inside the package: `SLACK_WEBHOOK_URL`, `SLACK_USERNAME`, `SLACK_ICON_EMOJI`, `SLACK_CHANNEL`.
+Config comes from the environment at the call site, never inside the package. `SLACK_WEBHOOK_URL` is the whole of it.
+
+The payload carries no `username`, `icon_emoji` or `channel`, and there is no option to set them. An Incoming Webhook owned by a Slack app [cannot override](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks) any of the three — they always come from the app's own configuration, and no scope changes that. `WithUsername` / `WithIconEmoji` / `WithChannel` used to exist and were unused by all six services, which looked like an oversight until the reason surfaced: they only ever worked on legacy custom-integration webhooks, which Slack has deprecated. Documenting a knob that does nothing costs more than not having it. Per-service identity is a Slack-side matter — give each service its own app. Per-message identity would need `chat.postMessage` with `chat:write.customize`, a different API this package does not use.
+
+If a genuinely effective option appears later (a footer toggle, say), adding `opts ...Option` back to `NewNotifier` does not break callers that pass none.
 
 ## Conventions
 
 - Doc comments are Japanese, one per exported *and* unexported symbol, in the `名前 は …します。` form. Error strings are Japanese; wrap with `%w`.
-- Constructors return `(*T, error)` and validate up front; configuration via `type Option func(*T)` variadics.
+- Constructors return `(*T, error)` and validate up front; where configuration is needed, use `type Option func(*T)` variadics.
 - Tests are black-box (`package notify_test` / `package slack_test`) driving a stub `httpkit.Requester`. Use white-box `_internal_test.go` only for unexported helpers — `slack/blocks_internal_test.go` is the one such file, because the Markdown conversion rules are worth testing directly rather than through a webhook payload.
 - Comments explain *why*, not *what*. The escaping-order and preserved-construct comments in `blocks.go` are the model: each states the failure it prevents.
