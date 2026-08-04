@@ -3,7 +3,7 @@ module github.com/shouni/go-notify
 go 1.26
 
 require (
-	github.com/shouni/go-http-kit v1.7.2
+	github.com/shouni/go-http-kit v1.8.0
 	github.com/shouni/go-utils v1.5.0
 	github.com/slack-go/slack v0.27.0
 )

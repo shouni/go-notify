@@ -38,6 +38,13 @@ type Client struct {
 
 // NewClient は Slack Webhook API クライアントを生成します。
 // opts を指定すると、ユーザー名、アイコン絵文字、送信先チャンネルを上書きできます。
+//
+// client のリトライ方針はそのまま使われます。Webhook への投稿は非冪等なため、
+// 重複投稿を避けたい場合はリトライを無効化したクライアントを渡してください
+// （詳細は NewNotifier のドキュメントを参照）。
+//
+// webhookURL が空の場合はエラーを返します。通知先が任意設定であることを
+// 表現したい場合は、NewNotifier を使ってください。
 func NewClient(client httpkit.Requester, webhookURL string, opts ...Option) (*Client, error) {
 	if client == nil {
 		return nil, errors.New("http client cannot be nil")

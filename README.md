@@ -50,6 +50,9 @@ import (
     "github.com/shouni/go-notify/slack"
 )
 
+// Webhook 投稿は非冪等なので、リトライは無効にしておくのが安全です（下記の注意を参照）
+httpClient := httpkit.New(timeout, httpkit.WithNoRetry())
+
 notifier, err := slack.NewNotifier(httpClient, os.Getenv("SLACK_WEBHOOK_URL"))
 if err != nil {
     return err
@@ -136,6 +139,22 @@ go-notify/
 
 新しいチャネルを追加する場合は、`notify.Notifier` を実装したサブパッケージを
 追加するだけです。`notify` 側の変更は不要です。
+
+### ⚠️ リトライについて
+
+**Webhook への投稿は非冪等です。** 成功するたびに新しいメッセージが作られるため、
+Slack には届いたのにレスポンスを取りこぼしてリトライすると、同じ通知が二重に投稿されます。
+
+本ライブラリはリトライ方針を持たず、渡された `httpkit.Requester` をそのまま使います。
+`httpkit.New(timeout)` は既定でリトライが有効なので、**他の用途と 1 つのクライアントを
+共有していると重複投稿が起こり得ます**。通知用には無効化したものを渡してください。
+
+```go
+notifyClient := httpkit.New(timeout, httpkit.WithNoRetry())
+```
+
+「通知の取りこぼし」と「重複投稿」のどちらを避けたいかはアプリケーション側の判断なので、
+ライブラリでは決めていません。
 
 ### Slack の記法変換について
 
