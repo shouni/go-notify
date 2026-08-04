@@ -27,11 +27,17 @@ var (
 	// headerRegex は Markdown の見出しを Slack mrkdwn の太字記法に変換します。
 	headerRegex = regexp.MustCompile(`(?m)^##\s*(.*)$`) // ## Title -> *Title*
 	// listItemRegex は Markdown のリスト項目を Slack mrkdwn 向けの箇条書きに変換します。
-	listItemRegex = regexp.MustCompile(`(?m)^\s*-\s+`) // - item -> • item
+	// 空白は同一行のものだけを対象にします（\s だと改行まで飲み込み、
+	// 直前の行との改行ごと箇条書きに置き換えてしまうため）。
+	listItemRegex = regexp.MustCompile(`(?m)^[ \t]*-[ \t]+`) // - item -> • item
 	// linkRegex は Markdown のリンクを Slack mrkdwn のリンクに変換します。
 	// 表示テキストに ] を、URL に ) を含むリンクは対象外です（Slack 側で
 	// エスケープできないため、変換しても壊れたリンクにしかなりません）。
 	linkRegex = regexp.MustCompile(`\[([^\]]*)\]\(([^)\s]+)\)`) // [text](url) -> <url|text>
+	// fencedBlockRegex は行頭の ``` で開き、行頭の ``` で閉じるコードブロックにマッチします。
+	// 閉じフェンスが無い場合はマッチせず、通常のテキストとして変換されます
+	// （壊れたフェンスに引きずられて以降の本文すべてが変換対象外になるのを避けるため）。
+	fencedBlockRegex = regexp.MustCompile("(?ms)^```[^\n]*\n.*?^```[ \t]*$")
 	// preservedRegex は、エスケープしてはいけない部分にマッチします。
 	//
 	// 対象は Slack が構文として解釈する <...>、すなわちスキーム付きリンク
@@ -84,19 +90,42 @@ func buildSectionText(message string) string {
 
 // formatMarkdown は一般的な Markdown 記法の一部を Slack mrkdwn に変換します。
 //
-// リンク変換を先に、エスケープを後に行います。Slack が & < > の
-// エスケープを求めるのはプレーンテキストだけで、<URL|表示テキスト> の
-// 内側は構文として解釈済みのため対象外だからです。逆順にすると
-// GCS の署名付き URL のクエリ区切り & が &amp; に化けて URL 自体が壊れます。
+// コードブロックの中身は記法変換の対象外です。コードブロックはエラー出力や
+// コマンドのログを原文のまま見せるためのものなので、そこで - を • に、
+// **text** を *text* に書き換えると、貼った本人が見たいはずの原文が壊れます。
+// エスケープだけはブロック内でも必要なため、変換と分けて適用します。
+// ブロック内は escapeMrkdwn ではなく無条件のエスケープを使います。原文をそのまま
+// 見せるのが目的である以上、たまたま <https://…> の形をした文字列もリンク構文では
+// なくただの文字列として扱うべきだからです。
 //
 // 既に <URL|表示テキスト> 形式やメンションで書かれた mrkdwn はそのまま通ります。
 // 行頭の > による引用記法は使えません（エスケープ対象の文字と区別できないため）。
 func formatMarkdown(message string) string {
-	message = linkRegex.ReplaceAllString(message, "<$2|$1>")
-	message = escapeMrkdwn(message)
-	message = boldRegex.ReplaceAllString(message, "*$1*")
-	message = headerRegex.ReplaceAllString(message, "*$1*")
-	return listItemRegex.ReplaceAllString(message, "• ")
+	var sb strings.Builder
+	last := 0
+
+	for _, loc := range fencedBlockRegex.FindAllStringIndex(message, -1) {
+		sb.WriteString(convertMarkdown(message[last:loc[0]]))
+		sb.WriteString(mrkdwnEscaper.Replace(message[loc[0]:loc[1]]))
+		last = loc[1]
+	}
+	sb.WriteString(convertMarkdown(message[last:]))
+
+	return sb.String()
+}
+
+// convertMarkdown はコードブロックの外側 1 区間を mrkdwn へ変換します。
+//
+// リンク変換を先に、エスケープを後に行います。Slack が & < > の
+// エスケープを求めるのはプレーンテキストだけで、<URL|表示テキスト> の
+// 内側は構文として解釈済みのため対象外だからです。逆順にすると
+// GCS の署名付き URL のクエリ区切り & が &amp; に化けて URL 自体が壊れます。
+func convertMarkdown(segment string) string {
+	segment = linkRegex.ReplaceAllString(segment, "<$2|$1>")
+	segment = escapeMrkdwn(segment)
+	segment = boldRegex.ReplaceAllString(segment, "*$1*")
+	segment = headerRegex.ReplaceAllString(segment, "*$1*")
+	return listItemRegex.ReplaceAllString(segment, "• ")
 }
 
 // escapeMrkdwn は、プレーンテキスト中の Slack 制御文字を実体参照へ変換します。

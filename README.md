@@ -92,7 +92,12 @@ pipeline.Skipped(ctx, body, reason)         // 本文末尾に「理由」を追
 ```
 
 見出しを実行時の条件で切り替えたい場合（コマンド種別ごとに文言を変える等）は、
-`Pipeline` を使わず `Notifier` と `Body` を直接組み合わせてください。
+`WithTitles` で見出しだけを差し替えた `Pipeline` を派生させます。
+元の `Pipeline` は変更されないので、1 つ保持したまま呼び出しごとに切り替えられます。
+
+```go
+pipeline.WithTitles(notify.Titles{Success: titleFor(cmd)}).Success(ctx, body)
+```
 
 ### Body の出力形式
 
@@ -101,13 +106,29 @@ pipeline.Skipped(ctx, body, reason)         // 本文末尾に「理由」を追
 | `Field("Title", "夏の終わり")` | `**Title:** 夏の終わり` | **Title:** 夏の終わり |
 | `Code("Command", "compose")` | ``**Command:** `compose` `` | **Command:** `compose` |
 | `Link("Detail", url, "job-1")` | `**Detail:** [job-1](url)` | **Detail:** [job-1](url) |
+| `LinkOrField("Output", url, uri)` | url があればリンク、無ければ素の値 | 〃 |
 | `Text("素の行")` | `素の行` | 素の行 |
 | `Error("エラー内容", err)` | `**エラー内容:**` + 改行 + 内容 | 〃 |
-| `Block("エラー詳細", s)` | `**エラー詳細:**` + コードブロック | 〃 |
+| `Block("実行ログ", s)` | `**実行ログ:**` + フェンス付きコードブロック | 〃 |
 
 値が空の場合は行ごと出力されません。`Error` / `Block` は値が無ければ `N/A` を表示し、
 本文が既にある場合は 1 行空けてから追記します。
 1 行も書き込まれなかった `Body` の `String()` は `N/A` を返します。
+
+`Block` の中身は各チャネルの記法変換の対象外です。コマンド出力やログを
+原文のまま見せるための入口なので、`- ` や `**` が書き換わることはありません。
+
+### 等幅の値を組み合わせる
+
+`Code` は「ラベル + 単一の値」しか作れません。単位や絵文字を添えたい、
+1 行に複数の等幅の値を並べたい場合は `Mono` を使います。
+本文の Markdown 記法を知る場所を `notify` パッケージの中に留めるための出口なので、
+呼び出し側でバックティックを直接書かないでください。
+
+```go
+body.Field("Seed", notify.Mono(strconv.Itoa(seed))+" 🎲")
+body.Field("ブランチ", notify.Mono(base)+" ← "+notify.Mono(feature))
+```
 
 ### 表示のカスタマイズ
 
@@ -172,6 +193,12 @@ notifier, err := slack.NewNotifier(httpClient.WithoutRetry(), webhookURL)
 `<@U123>` などのメンションは Slack が構文として解釈済みのため変換しません。
 GCS の署名付き URL に含まれる `&` をエスケープすると署名が変わって 403 になるため、
 この境界は意図的なものです。
+
+記法変換の対象外がもう 1 つあります。フェンス（行頭の ` ``` `）で囲まれた
+コードブロックの中身です。`Body.Block` はコマンド出力やログを原文のまま
+見せるためのものなので、そこで `- ` が `• ` に、`**text**` が `*text*` に
+書き換わると、貼った本人が見たい原文が壊れます。
+ただし `&` `<` `>` のエスケープはブロック内でも必要なため、記法変換とは分けて適用します。
 
 ---
 

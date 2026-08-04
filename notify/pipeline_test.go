@@ -165,6 +165,58 @@ func TestPipelineEnabled(t *testing.T) {
 	}
 }
 
+// TestPipelineWithTitles は、見出しを差し替えた Pipeline が使われることを検証します。
+func TestPipelineWithTitles(t *testing.T) {
+	rec := &recorder{}
+	base := notify.NewPipeline(rec, testTitles)
+
+	err := base.WithTitles(notify.Titles{Success: "🎨 デザインシート生成が完了しました"}).
+		Success(context.Background(), notify.NewBody().Field("Job ID", "job-1"))
+	if err != nil {
+		t.Fatalf("通知に失敗しました: %v", err)
+	}
+
+	if len(rec.got) != 1 {
+		t.Fatalf("送信件数 = %d, want 1", len(rec.got))
+	}
+	if got, want := rec.got[0].Title, "🎨 デザインシート生成が完了しました"; got != want {
+		t.Errorf("Title = %q, want %q", got, want)
+	}
+}
+
+// TestPipelineWithTitlesLeavesOriginalIntact は、WithTitles が元の Pipeline を
+// 変更しないことを検証します。1 つの Pipeline を保持したまま呼び出しごとに
+// 見出しを変える使い方が前提なので、共有状態を書き換えてはいけません。
+func TestPipelineWithTitlesLeavesOriginalIntact(t *testing.T) {
+	rec := &recorder{}
+	base := notify.NewPipeline(rec, testTitles)
+
+	if err := base.WithTitles(notify.Titles{Success: "別の見出し"}).Success(context.Background(), nil); err != nil {
+		t.Fatalf("通知に失敗しました: %v", err)
+	}
+	if err := base.Success(context.Background(), nil); err != nil {
+		t.Fatalf("通知に失敗しました: %v", err)
+	}
+
+	if len(rec.got) != 2 {
+		t.Fatalf("送信件数 = %d, want 2", len(rec.got))
+	}
+	if got := rec.got[1].Title; got != testTitles.Success {
+		t.Errorf("元の Pipeline の Title = %q, want %q", got, testTitles.Success)
+	}
+}
+
+// TestPipelineWithTitlesKeepsNotifier は、差し替え後も通知の有効・無効が
+// 引き継がれることを検証します。
+func TestPipelineWithTitlesKeepsNotifier(t *testing.T) {
+	if p := notify.NewPipeline(notify.Disabled(), testTitles); p.WithTitles(testTitles).Enabled() {
+		t.Error("Disabled から派生した Enabled() = true, want false")
+	}
+	if p := notify.NewPipeline(&recorder{}, testTitles); !p.WithTitles(testTitles).Enabled() {
+		t.Error("実装から派生した Enabled() = false, want true")
+	}
+}
+
 // TestPipelineMissingTitle は、見出し未設定の結果を通知しようとした場合に
 // 黙って送信せずエラーを返すことを検証します。
 func TestPipelineMissingTitle(t *testing.T) {

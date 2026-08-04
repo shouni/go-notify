@@ -28,7 +28,7 @@ CI (`.github/workflows/ci.yml`) runs three jobs on push/PR to `main`/`develop`: 
 notify/       # the channel-agnostic abstraction
   notify.go     # Notifier / Message / Disabled
   body.go       # Body — notification body builder
-  pipeline.go   # Pipeline — success / failure / skipped triple
+  pipeline.go   # Pipeline — success / failure / skipped triple, WithTitles for per-call headings
 slack/        # Slack Incoming Webhook implementation
 ```
 
@@ -42,11 +42,17 @@ Both packages live in subdirectories; nothing sits at the module root. That matc
 
 `Body` methods skip empty values, which is what removes the per-field `if value != ""` blocks the six services all carried. `String()` on a Body that was never written to returns `NotAvailable` (`"N/A"`) rather than an empty string — an empty notification is never the intent, and Slack's section block rejects empty text.
 
+`notify.Mono` is the deliberate escape hatch from that seam. `Code` only builds "label + one value", so callers wanting a unit, an emoji, or two monospaced values on one line were writing backticks inline (`fmt.Sprintf("`%d` 🎲", seed)` in `ap-comp`, `fmt.Sprintf("`%s` ← `%s`", base, feature)` in `git-gemini-web`) — which is the invariant above starting to leak into consumers. `Mono` gives them the markup without letting them author it. If a new case can't be expressed with `Mono` + `Field`, add a `Body` method rather than letting a call site write Markdown.
+
+`Body.Block` emits its fences on their own lines. `` ```content``` `` on one line is not a fenced block in CommonMark — the first content line is eaten as the info string and the closing fence never matches — and `slack/blocks.go` relies on the line-anchored form to find blocks to protect.
+
 ### Disabled, not error
 
 `slack.NewNotifier` returns `notify.Disabled()` when the webhook URL is blank or whitespace, and only errors when a URL *is* configured but the HTTP client is nil. This unifies a behaviour that had drifted: five services treated a blank webhook as "notifications off", while `ap-voice` let `slack.NewClient` fail and turned a missing optional setting into a startup error.
 
 `notify.Enabled(n)` reports whether a notifier actually sends, so callers can skip expensive body construction. `Pipeline.Enabled()` forwards it.
+
+`Pipeline.WithTitles` returns a copy with different headings and exists because `ap-comic` needs a per-command title and, without it, dropped out of `Pipeline` entirely — re-declaring `errorLabel`, calling `notify.Enabled` by hand, and open-coding `Notify` plus its error wrapping in two places. Titles are replaced, not merged: each call site fills in only the outcome it is about to send.
 
 Note the two constructors differ on purpose: `slack.NewClient` still rejects an empty webhook URL (it returns a concrete `*Client`, and a client that cannot post is meaningless). `NewNotifier` is the one with the optional-feature semantics.
 
@@ -57,6 +63,10 @@ Note the two constructors differ on purpose: `slack.NewClient` still rejects an 
 `preservedRegex` matches only *those* constructs, not any `<…>`, because an error string containing `<nil>` must be escaped rather than mistaken for a link. That distinction is what `TestFormatMarkdownEscapesSpecialCharacters` and `TestFormatMarkdownSignedURLIsNotEscaped` guard from opposite sides — changing one without the other will break the other's case.
 
 Blockquote (`>` at line start) is consequently unsupported; it is indistinguishable from a character needing escape.
+
+Fenced code blocks are exempt from markup conversion but not from escaping. `formatMarkdown` splits on `fencedBlockRegex` and runs `convertMarkdown` only outside the fences; inside, it applies `mrkdwnEscaper` directly rather than `escapeMrkdwn`, because a block exists to show text verbatim — a string that happens to look like `<https://…>` is a string there, not a link. Without the split, `Body.Block` mangles exactly what it is for: a pasted stack trace's `- ` becomes `• ` and `**` becomes `*`. `TestFormatMarkdownPreservesCodeBlockContent` and `TestFormatMarkdownConvertsAroundCodeBlock` pin the two sides. An unterminated fence deliberately does *not* match, so one broken fence can't silently exempt the rest of the message.
+
+`listItemRegex` uses `[ \t]` rather than `\s` for the same reason `preservedRegex` is narrow: `\s` swallows the preceding newline, so a list item at the start of a segment consumed the line break separating it from the previous line. That only surfaced once `formatMarkdown` began converting segments instead of the whole message.
 
 ### HTTP
 

@@ -191,3 +191,32 @@ func TestNotifyRendersErrorBlockAsMrkdwn(t *testing.T) {
 		t.Errorf("エラー節が mrkdwn に変換されていません: %q", got)
 	}
 }
+
+// TestNotifyKeepsCodeBlockContentVerbatim は、notify.Body.Block に渡した内容が
+// Slack へ届くまで書き換えられないことを検証します。
+//
+// Block はコマンド出力やログを原文のまま見せるための入口なので、
+// ラベル側が mrkdwn に変換される一方でブロックの中身は素通しになる、
+// という非対称がここでの正しい振る舞いです。
+func TestNotifyKeepsCodeBlockContentVerbatim(t *testing.T) {
+	stub := &stubRequester{}
+	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
+	if err != nil {
+		t.Fatalf("NewNotifier() = %v, want nil", err)
+	}
+
+	body := notify.NewBody().
+		Code("Job ID", "job-1").
+		Block("実行ログ", "usage: cmd [options]\n  - --flag  **必須**")
+
+	if err := n.Notify(context.Background(), notify.Message{Title: "❌ 失敗", Body: body.String()}); err != nil {
+		t.Fatalf("Notify() = %v, want nil", err)
+	}
+
+	want := "*Job ID:* `job-1`\n\n" +
+		"*実行ログ:*\n" +
+		"```\nusage: cmd [options]\n  - --flag  **必須**\n```"
+	if got := stub.sectionText(t); got != want {
+		t.Errorf("セクション本文 =\n%q\nwant\n%q", got, want)
+	}
+}
