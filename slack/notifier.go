@@ -28,6 +28,23 @@ func (s *Client) Notify(ctx context.Context, msg notify.Message) error {
 // なく、宛先の未設定は起動を妨げる理由にならないためです。
 // 逆に webhookURL が設定されているのに client が nil の場合は、送信できない
 // 設定ミスなのでエラーを返します。
+//
+// # リトライについて
+//
+// Webhook への投稿は非冪等です（成功するたびに新しいメッセージが作られます）。
+// Slack には届いたがレスポンスを取りこぼした場合、リトライすると同じ通知が
+// 二重に投稿されます。
+//
+// 本パッケージはリトライ方針を持たず、client に渡されたものをそのまま使います。
+// 重複を避けたい場合は、リトライを無効化したクライアントを渡してください。
+//
+//	httpClient := httpkit.New(timeout, httpkit.WithNoRetry())
+//	notifier, err := slack.NewNotifier(httpClient, webhookURL)
+//
+// 既定の httpkit.New(timeout) はリトライが有効なので、他の用途と 1 つの
+// クライアントを共有していると重複投稿が起こり得ます。通知の取りこぼしと
+// 重複のどちらを避けたいかはアプリケーション側の判断なので、ここでは
+// 決めません。
 func NewNotifier(client httpkit.Requester, webhookURL string, opts ...Option) (notify.Notifier, error) {
 	if strings.TrimSpace(webhookURL) == "" {
 		return notify.Disabled(), nil
