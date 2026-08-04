@@ -28,9 +28,10 @@ var levelColors = map[notify.Level]string{
 // Slack 側で省略され、Webhook を持つアプリ自身の名前とアイコンが使われます。
 // 表示名を勝手に決めないのは、それが通知の送り主の同一性そのものだからです。
 //
-// なお Slack アプリ経由で作った Webhook は、chat:write.customize スコープが
-// 無いとこれらの上書きを無視します。With 系オプションを設定しても表示が
-// 変わらない場合は、コード側ではなくスコープを疑ってください。
+// なお Slack アプリ経由で作った Incoming Webhook は、これらの上書きを
+// 一切受け付けません（投稿先・表示名・アイコンは常にアプリの設定を継承します）。
+// 効くのは旧来の custom integration 版の Webhook だけです。
+// サービスごとに表示を変えたい場合は、Slack アプリを分けてください。
 type notifier struct {
 	client     httpkit.Requester
 	webhookURL string

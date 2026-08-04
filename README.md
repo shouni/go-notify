@@ -161,9 +161,14 @@ notifier, err := slack.NewNotifier(httpClient, webhookURL,
 **既定値はありません。** 指定しなければこれらは送られず、Webhook を持つ
 Slack アプリ自身の名前とアイコンで投稿されます。
 
-> ⚠️ Slack アプリ経由で作成した Incoming Webhook は、`chat:write.customize`
-> スコープが無いと `username` / `icon_emoji` の上書きを**無視します**。
-> オプションを設定しても表示が変わらない場合は、コードではなくスコープを疑ってください。
+> ⚠️ **Slack アプリ経由で作成した Incoming Webhook は、これらの上書きを一切受け付けません。**
+> 投稿先チャンネル・表示名・アイコンは常にアプリの設定を継承します
+> （[公式ドキュメント](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks)）。
+> オプションが効くのは旧来の custom integration 版の Webhook だけです。
+>
+> サービスごとに表示を変えたい場合は **Slack アプリを分けて**ください。
+> 1 つのアプリのまま投稿ごとに表示を変えるには、Webhook ではなく
+> `chat.postMessage`（`chat:write.customize` スコープ）が必要です。本パッケージは対応していません。
 
 ---
 

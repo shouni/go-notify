@@ -94,7 +94,7 @@ The sibling repo `ap-mcp-slack` reached the opposite default for the same reason
 
 Truncation is rune-based (`utf8.RuneCountInString` / `go-utils/text.Truncate`), never byte-based — messages are Japanese.
 
-Config comes from the environment at the call site, never inside the package. In practice only `SLACK_WEBHOOK_URL` is read: none of the six services wire `WithUsername` / `WithIconEmoji` / `WithChannel`, and that is not an oversight — an Incoming Webhook owned by a Slack app ignores `username` and `icon_emoji` unless the app holds `chat:write.customize`, so the overrides are inert in this setup.
+Config comes from the environment at the call site, never inside the package. In practice only `SLACK_WEBHOOK_URL` is read: none of the six services wire `WithUsername` / `WithIconEmoji` / `WithChannel`, and that is not an oversight — an Incoming Webhook owned by a Slack app [cannot override](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks) the channel, username, or icon at all; they always inherit the app's configuration. No scope changes this. The options only bite on legacy custom-integration webhooks, which is why they look dead here. Per-message identity would require `chat.postMessage` with `chat:write.customize`, a different API this package does not use.
 
 The display fields therefore have no defaults. They used to be seeded with `Bot` / `:robot_face:`, which was invisible only because Slack was discarding them; granting the scope would have silently renamed every notification's sender to `Bot`. Empty means the fields are omitted from the payload and the webhook's own app identity stands. `TestNotifyOmitsDisplayOverridesByDefault` pins it.
 
