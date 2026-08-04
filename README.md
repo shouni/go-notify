@@ -68,6 +68,9 @@ err = notifier.Notify(ctx, notify.Message{
 })
 ```
 
+`Message.Title` は必須です。空のまま送るとエラーになります
+（本文の先頭行から見出しを推測することはしません）。
+
 ### パイプライン通知
 
 成功・失敗・スキップで見出しだけが変わる、という定型を `notify.Pipeline` が担います。
@@ -86,9 +89,9 @@ if !pipeline.Enabled() {
 
 body := notify.NewBody().Code("Job ID", jobID)
 
-pipeline.Success(ctx, body)                 // 見出しのみ差し替え
+pipeline.Success(ctx, body)                 // 本文はそのまま
 pipeline.Failure(ctx, body, err)            // 本文末尾に「エラー内容」を追記
-pipeline.Skipped(ctx, body, reason)         // 本文末尾に「理由」を追記
+pipeline.Skipped(ctx, body, reason)         // reason が非 nil なら「理由」を追記
 ```
 
 見出しを実行時の条件で切り替えたい場合（コマンド種別ごとに文言を変える等）は、
@@ -181,13 +184,16 @@ go-notify/
 │   ├── notify.go     # Notifier / Message / Level / Disabled
 │   ├── body.go       # Body: 通知本文のビルダー（標準 Markdown を出力）
 │   └── pipeline.go   # Pipeline: 成功・失敗・スキップの定型通知
-└── slack/        # Slack Incoming Webhook 実装（Block Kit / mrkdwn 変換）
+└── slack/        # Slack Incoming Webhook 実装
+    ├── notifier.go   # NewNotifier / Notify: 唯一の入口
+    ├── blocks.go     # mrkdwn 変換・エスケープ・Block Kit 組み立て
+    └── options.go    # WithUsername / WithIconEmoji / WithChannel
 ```
 
 新しいチャネルを追加する場合は、`notify.Notifier` を実装したサブパッケージを
 追加するだけです。`notify` 側の変更は不要です。
 
-### ⚠️ リトライについて
+## ⚠️ リトライについて
 
 **Webhook への投稿は非冪等です。** 成功するたびに新しいメッセージが作られるため、
 Slack には届いたのにレスポンスを取りこぼしてリトライすると、同じ通知が二重に投稿されます。
@@ -208,7 +214,7 @@ notifier, err := slack.NewNotifier(httpClient.WithoutRetry(), webhookURL)
 「通知の取りこぼし」と「重複投稿」のどちらを避けたいかはアプリケーション側の判断なので、
 ライブラリでは決めていません。
 
-### Slack の記法変換について
+## 🎨 Slack の記法変換について
 
 `slack` パッケージは、`Body` が出力する標準 Markdown を Slack mrkdwn に変換します。
 
@@ -219,7 +225,7 @@ notifier, err := slack.NewNotifier(httpClient.WithoutRetry(), webhookURL)
 
 エスケープ対象は**プレーンテキストのみ**です。`<URL|表示テキスト>` の内側や
 `<@U123>` などのメンションは Slack が構文として解釈済みのため変換しません。
-GCS の署名付き URL に含まれる `&` をエスケープすると署名が変わって 403 になるため、
+署名付き URL に含まれる `&` をエスケープすると署名が変わって 403 になるため、
 この境界は意図的なものです。
 
 記法変換の対象外がもう 1 つあります。フェンス（行頭の ` ``` `）で囲まれた
@@ -230,6 +236,6 @@ GCS の署名付き URL に含まれる `&` をエスケープすると署名が
 
 ---
 
-### 📜 ライセンス
+## 📜 ライセンス
 
 このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
