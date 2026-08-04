@@ -104,9 +104,9 @@ pipeline.WithTitles(notify.Titles{Success: titleFor(cmd)}).Success(ctx, body)
 | メソッド | 出力（Markdown） | Slack 表示 |
 | :--- | :--- | :--- |
 | `Field("Title", "サンプル")` | `**Title:** サンプル` | **Title:** サンプル |
-| `Code("Command", "compose")` | ``**Command:** `compose` `` | **Command:** `compose` |
+| `Code("Command", "run_task")` | ``**Command:** `run_task` `` | **Command:** `run_task` |
 | `Link("Detail", url, "job-1")` | `**Detail:** [job-1](url)` | **Detail:** [job-1](url) |
-| `LinkOrField("Output", url, uri)` | url があればリンク、無ければ素の値 | 〃 |
+| `LinkOrField("Out", url, uri)` | url があれば `Link`、無ければ `Field` と同じ | 〃 |
 | `Text("素の行")` | `素の行` | 素の行 |
 | `Error("エラー内容", err)` | `**エラー内容:**` + 改行 + 内容 | 〃 |
 | `Block("実行ログ", s)` | `**実行ログ:**` + フェンス付きコードブロック | 〃 |
@@ -121,8 +121,9 @@ pipeline.WithTitles(notify.Titles{Success: titleFor(cmd)}).Success(ctx, body)
 ### 値をコードスパンにする
 
 `Code` は「ラベル + 単一の値」しか作れません。単位や絵文字を添えたい、
-1 行に複数の等幅の値を並べたい場合は `CodeSpan` を使います。
-本文の Markdown 記法を知る場所を `notify` パッケージの中に留めるための出口なので、
+1 行に複数のコードスパンを並べたい場合は `CodeSpan` を使います。
+
+本文の Markdown 記法を知る場所を `notify` パッケージの中に留めるための出口です。
 呼び出し側でバックティックを直接書かないでください。
 
 ```go
@@ -140,35 +141,35 @@ body.Field("ブランチ", notify.CodeSpan(base)+" ← "+notify.CodeSpan(feature
 | `LevelSuccess` | `Success` | attachment の色帯 `good`（緑） |
 | `LevelFailure` | `Failure` | `danger`（赤） |
 | `LevelSkipped` | `Skipped` | `warning`（黄） |
-| `LevelNone`（ゼロ値） | — | 色なし。従来どおりトップレベル blocks |
+| `LevelNone`（ゼロ値） | — | 色なし（トップレベル blocks のまま） |
 
 見出しに `✅` `❌` を書いて結果を示す必要はなくなりますが、残しても構いません。
 `Message` を直接組み立てている場合は `LevelNone` のままなので、表示は変わりません。
 
-### 表示のカスタマイズ
+### 表示名・アイコン・チャンネル
 
-投稿時のユーザー名・アイコン・チャンネルは関数オプションで上書きできます。
-設定値をどこから読むか（環境変数など）は呼び出し側の責務です。
+**コードからは変えられないのが普通です。** Slack アプリ経由で作成した Incoming Webhook は、
+投稿先チャンネル・表示名・アイコンを常にアプリの設定から取り、ペイロードでの上書きを
+無視します（[公式ドキュメント](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks)）。
+
+サービスごとに表示を変えたい場合は、**Slack アプリを分けて**それぞれの Webhook URL を
+使ってください。コード変更は不要です。
+
+上書きが効くのは旧来の custom integration 版 Webhook だけです。その場合は
+関数オプションで指定します（設定値をどこから読むかは呼び出し側の責務です）。
 
 ```go
 notifier, err := slack.NewNotifier(httpClient, webhookURL,
     slack.WithUsername("Release Bot"),
     slack.WithIconEmoji(":rocket:"),
-    slack.WithChannel("#notifications"),   // Webhook 側の設定を上書き
+    slack.WithChannel("#notifications"),
 )
 ```
 
-**既定値はありません。** 指定しなければこれらは送られず、Webhook を持つ
-Slack アプリ自身の名前とアイコンで投稿されます。
+既定値は持ちません。指定しなければこれらのフィールドは送信されません。
 
-> ⚠️ **Slack アプリ経由で作成した Incoming Webhook は、これらの上書きを一切受け付けません。**
-> 投稿先チャンネル・表示名・アイコンは常にアプリの設定を継承します
-> （[公式ドキュメント](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks)）。
-> オプションが効くのは旧来の custom integration 版の Webhook だけです。
->
-> サービスごとに表示を変えたい場合は **Slack アプリを分けて**ください。
-> 1 つのアプリのまま投稿ごとに表示を変えるには、Webhook ではなく
-> `chat.postMessage`（`chat:write.customize` スコープ）が必要です。本パッケージは対応していません。
+投稿ごとに表示を変えるには Webhook ではなく `chat.postMessage`（Bot トークン +
+`chat:write.customize` スコープ）が必要です。本パッケージは Webhook 専用なので対応していません。
 
 ---
 
