@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/shouni/go-http-kit/httpkit"
-	"github.com/shouni/go-notify"
+	"github.com/shouni/go-notify/notify"
 )
 
 // Client が notify.Notifier を満たすことを保証します。

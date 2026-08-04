@@ -25,11 +25,14 @@ CI (`.github/workflows/ci.yml`) runs three jobs on push/PR to `main`/`develop`: 
 ## Architecture
 
 ```
-notify.go     # Notifier / Message / Disabled — the abstraction
-body.go       # Body — notification body builder
-pipeline.go   # Pipeline — success / failure / skipped triple
+notify/       # the channel-agnostic abstraction
+  notify.go     # Notifier / Message / Disabled
+  body.go       # Body — notification body builder
+  pipeline.go   # Pipeline — success / failure / skipped triple
 slack/        # Slack Incoming Webhook implementation
 ```
+
+Both packages live in subdirectories; nothing sits at the module root. That matches every other library in this family (`go-http-kit/httpkit`, `go-remote-io/remoteio`, `go-utils/*`) — `clibase` is the only sibling with a root package. The import path therefore repeats the name (`github.com/shouni/go-notify/notify`), exactly as `go-remote-io/remoteio` does.
 
 `slack` imports `notify`; never the reverse. A new channel is a new subpackage implementing `notify.Notifier` — `notify` itself must not need editing to accommodate one.
 

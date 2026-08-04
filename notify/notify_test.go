@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/shouni/go-notify"
+	"github.com/shouni/go-notify/notify"
 )
 
 // recorder は送信された Message を記録する Notifier です。

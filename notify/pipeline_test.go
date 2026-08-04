@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shouni/go-notify"
+	"github.com/shouni/go-notify/notify"
 )
 
 // testTitles はテスト用の見出しセットです。
@@ -90,6 +90,40 @@ func TestPipelineSkippedAppendsReason(t *testing.T) {
 	}
 
 	want := "**理由:**\n差分がありません"
+	if rec.got[0].Body != want {
+		t.Errorf("Body = %q, want %q", rec.got[0].Body, want)
+	}
+}
+
+// TestPipelineSkippedOmitsNilReason は、理由が nil の場合に「理由」節ごと
+// 省かれることを検証します。スキップは見出しだけで意味が通ることが多く、
+// 「理由: N/A」を足しても情報が増えないためです。
+func TestPipelineSkippedOmitsNilReason(t *testing.T) {
+	rec := &recorder{}
+	p := notify.NewPipeline(rec, testTitles)
+
+	if err := p.Skipped(context.Background(), notify.NewBody().Code("Job ID", "job-1"), nil); err != nil {
+		t.Fatalf("通知に失敗しました: %v", err)
+	}
+
+	want := "**Job ID:** `job-1`"
+	if rec.got[0].Body != want {
+		t.Errorf("Body = %q, want %q", rec.got[0].Body, want)
+	}
+}
+
+// TestPipelineFailureKeepsNilCause は、Skipped と対照的に、原因が nil でも
+// 「エラー内容」節が N/A として残ることを検証します。
+// 失敗したのに原因が無いのは想定外の状態であり、消してはいけません。
+func TestPipelineFailureKeepsNilCause(t *testing.T) {
+	rec := &recorder{}
+	p := notify.NewPipeline(rec, testTitles)
+
+	if err := p.Failure(context.Background(), nil, nil); err != nil {
+		t.Fatalf("通知に失敗しました: %v", err)
+	}
+
+	want := "**エラー内容:**\n" + notify.NotAvailable
 	if rec.got[0].Body != want {
 		t.Errorf("Body = %q, want %q", rec.got[0].Body, want)
 	}

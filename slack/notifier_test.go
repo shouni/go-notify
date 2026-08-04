@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shouni/go-notify"
+	"github.com/shouni/go-notify/notify"
 	"github.com/shouni/go-notify/slack"
 	slackgo "github.com/slack-go/slack"
 )

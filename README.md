@@ -45,6 +45,11 @@ go get github.com/shouni/go-notify
 ### 基本
 
 ```go
+import (
+    "github.com/shouni/go-notify/notify"
+    "github.com/shouni/go-notify/slack"
+)
+
 notifier, err := slack.NewNotifier(httpClient, os.Getenv("SLACK_WEBHOOK_URL"))
 if err != nil {
     return err
@@ -122,9 +127,10 @@ notifier, err := slack.NewNotifier(httpClient, webhookURL,
 
 ```text
 go-notify/
-├── notify.go     # Notifier / Message / Disabled: チャネル非依存の抽象
-├── body.go       # Body: 通知本文のビルダー（標準 Markdown を出力）
-├── pipeline.go   # Pipeline: 成功・失敗・スキップの定型通知
+├── notify/       # チャネル非依存の抽象
+│   ├── notify.go     # Notifier / Message / Disabled
+│   ├── body.go       # Body: 通知本文のビルダー（標準 Markdown を出力）
+│   └── pipeline.go   # Pipeline: 成功・失敗・スキップの定型通知
 └── slack/        # Slack Incoming Webhook 実装（Block Kit / mrkdwn 変換）
 ```
 
