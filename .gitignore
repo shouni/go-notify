@@ -1,0 +1,32 @@
+# JetBrains IDEs
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# macOS
+.DS_Store
+
+# Go Modules & Build artifacts
+/bin/
+/debug
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go Cache & Coverage
+.gocache/
+cover.out
+*.prof
+
+# Security / Secrets
+.env*
+!.env.example
+
+# Local development
+/vendor/
