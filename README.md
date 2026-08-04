@@ -149,18 +149,6 @@ body.Field("ブランチ", notify.CodeSpan(base)+" ← "+notify.CodeSpan(feature
 見出しに `✅` `❌` を書いて結果を示す必要はなくなりますが、残しても構いません。
 `Message` を直接組み立てている場合は `LevelNone` のままなので、表示は変わりません。
 
-### 表示名・アイコン・チャンネル
-
-`slack.WithUsername` / `WithIconEmoji` / `WithChannel` がありますが、**Slack アプリ経由で
-作成した Incoming Webhook では効きません**。投稿先・表示名・アイコンは常にアプリの設定を
-継承します（[公式ドキュメント](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks)）。
-効くのは旧来の custom integration 版だけです。
-
-サービスごとに表示を変えたい場合は、**Slack アプリを分けて**それぞれの Webhook URL を
-使ってください。コード変更は不要です。
-
----
-
 ## 📐 プロジェクト構成
 
 ```text
@@ -171,8 +159,7 @@ go-notify/
 │   └── pipeline.go   # Pipeline: 成功・失敗・スキップの定型通知
 └── slack/        # Slack Incoming Webhook 実装
     ├── notifier.go   # NewNotifier / Notify: 唯一の入口
-    ├── blocks.go     # mrkdwn 変換・エスケープ・Block Kit 組み立て
-    └── options.go    # WithUsername / WithIconEmoji / WithChannel
+    └── blocks.go     # mrkdwn 変換・エスケープ・Block Kit 組み立て
 ```
 
 新しいチャネルを追加する場合は、`notify.Notifier` を実装したサブパッケージを

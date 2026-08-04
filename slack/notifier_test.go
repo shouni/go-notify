@@ -144,61 +144,6 @@ func TestNotifyRequiresTitle(t *testing.T) {
 	}
 }
 
-// TestNotifyOmitsDisplayOverridesByDefault は、表示設定を指定しなければ
-// ペイロードに含まれないことを検証します。
-//
-// 空なら Slack 側で省略され、Webhook を持つアプリ自身の名前とアイコンが使われます。
-// ここに既定値を入れると、上書きが効く環境（旧来の custom integration 版 Webhook）で、
-// ユーザーが Slack 側に設定した表示名をライブラリが黙って潰します。
-func TestNotifyOmitsDisplayOverridesByDefault(t *testing.T) {
-	stub := &stubRequester{}
-	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
-	if err != nil {
-		t.Fatalf("NewNotifier() = %v, want nil", err)
-	}
-
-	if err := n.Notify(context.Background(), notify.Message{Title: "件名", Body: "本文"}); err != nil {
-		t.Fatalf("Notify() = %v, want nil", err)
-	}
-
-	if stub.sent.Username != "" {
-		t.Errorf("Username = %q, want empty", stub.sent.Username)
-	}
-	if stub.sent.IconEmoji != "" {
-		t.Errorf("IconEmoji = %q, want empty", stub.sent.IconEmoji)
-	}
-	if stub.sent.Channel != "" {
-		t.Errorf("Channel = %q, want empty", stub.sent.Channel)
-	}
-}
-
-// TestNotifyAppliesOptions は、表示のカスタマイズがペイロードに反映されることを検証します。
-func TestNotifyAppliesOptions(t *testing.T) {
-	stub := &stubRequester{}
-	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test",
-		slack.WithUsername("Bot Name"),
-		slack.WithIconEmoji(":musical_note:"),
-		slack.WithChannel("#notifications"),
-	)
-	if err != nil {
-		t.Fatalf("NewNotifier() = %v, want nil", err)
-	}
-
-	if err := n.Notify(context.Background(), notify.Message{Title: "件名", Body: "本文"}); err != nil {
-		t.Fatalf("Notify() = %v, want nil", err)
-	}
-
-	if stub.sent.Username != "Bot Name" {
-		t.Errorf("Username = %q, want %q", stub.sent.Username, "Bot Name")
-	}
-	if stub.sent.IconEmoji != ":musical_note:" {
-		t.Errorf("IconEmoji = %q, want %q", stub.sent.IconEmoji, ":musical_note:")
-	}
-	if stub.sent.Channel != "#notifications" {
-		t.Errorf("Channel = %q, want %q", stub.sent.Channel, "#notifications")
-	}
-}
-
 // TestNotifyLevelSetsAttachmentColor は、結果の種別が attachment の色になることを検証します。
 func TestNotifyLevelSetsAttachmentColor(t *testing.T) {
 	tests := []struct {

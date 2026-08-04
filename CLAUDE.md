@@ -88,19 +88,20 @@ The sibling repo `ap-mcp-slack` reached the opposite default for the same reason
 
 ### Slack package internals
 
-- `notifier.go` — the unexported `notifier` holds the requester, webhook URL, and display overrides. `NewNotifier` holds the disabled-vs-error policy above; `Notify` implements `notify.Notifier`. An empty `Message.Title` is an error, not a cue to guess: deriving a heading from the body's first line was a feature nothing used, and `Pipeline.send` already rejects an empty title, so the library said no through two separate paths.
-- `options.go` — `WithUsername`, `WithIconEmoji`, `WithChannel`.
+- `notifier.go` — the unexported `notifier` holds the requester and the webhook URL, nothing else. `NewNotifier` holds the disabled-vs-error policy above; `Notify` implements `notify.Notifier`. An empty `Message.Title` is an error, not a cue to guess: deriving a heading from the body's first line was a feature nothing used, and `Pipeline.send` already rejects an empty title, so the library said no through two separate paths.
 - `blocks.go` — Markdown→mrkdwn conversion, escaping, Block Kit assembly, and section truncation at `maxSectionLength` (2900 runes, under Slack's 3000 limit).
 
 Truncation is rune-based (`utf8.RuneCountInString` / `go-utils/text.Truncate`), never byte-based — messages are Japanese.
 
-Config comes from the environment at the call site, never inside the package. In practice only `SLACK_WEBHOOK_URL` is read: none of the six services wire `WithUsername` / `WithIconEmoji` / `WithChannel`, and that is not an oversight — an Incoming Webhook owned by a Slack app [cannot override](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks) the channel, username, or icon at all; they always inherit the app's configuration. No scope changes this. The options only bite on legacy custom-integration webhooks, which is why they look dead here. Per-message identity would require `chat.postMessage` with `chat:write.customize`, a different API this package does not use.
+Config comes from the environment at the call site, never inside the package. `SLACK_WEBHOOK_URL` is the whole of it.
 
-The display fields therefore have no defaults. They used to be seeded with `Bot` / `:robot_face:`, which was invisible only because Slack was discarding them; granting the scope would have silently renamed every notification's sender to `Bot`. Empty means the fields are omitted from the payload and the webhook's own app identity stands. `TestNotifyOmitsDisplayOverridesByDefault` pins it.
+The payload carries no `username`, `icon_emoji` or `channel`, and there is no option to set them. An Incoming Webhook owned by a Slack app [cannot override](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks) any of the three — they always come from the app's own configuration, and no scope changes that. `WithUsername` / `WithIconEmoji` / `WithChannel` used to exist and were unused by all six services, which looked like an oversight until the reason surfaced: they only ever worked on legacy custom-integration webhooks, which Slack has deprecated. Documenting a knob that does nothing costs more than not having it. Per-service identity is a Slack-side matter — give each service its own app. Per-message identity would need `chat.postMessage` with `chat:write.customize`, a different API this package does not use.
+
+If a genuinely effective option appears later (a footer toggle, say), adding `opts ...Option` back to `NewNotifier` does not break callers that pass none.
 
 ## Conventions
 
 - Doc comments are Japanese, one per exported *and* unexported symbol, in the `名前 は …します。` form. Error strings are Japanese; wrap with `%w`.
-- Constructors return `(*T, error)` and validate up front; configuration via `type Option func(*T)` variadics.
+- Constructors return `(*T, error)` and validate up front; where configuration is needed, use `type Option func(*T)` variadics.
 - Tests are black-box (`package notify_test` / `package slack_test`) driving a stub `httpkit.Requester`. Use white-box `_internal_test.go` only for unexported helpers — `slack/blocks_internal_test.go` is the one such file, because the Markdown conversion rules are worth testing directly rather than through a webhook payload.
 - Comments explain *why*, not *what*. The escaping-order and preserved-construct comments in `blocks.go` are the model: each states the failure it prevents.
