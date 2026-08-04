@@ -95,7 +95,7 @@ func TestFormatMarkdownEscapesSpecialCharacters(t *testing.T) {
 // Slack が & のエスケープを求めるのはプレーンテキストだけで、
 // <URL|表示テキスト> の内側は対象外です。ここで &amp; に変換してしまうと
 // 署名が変わって URL が 403 になるため、エスケープ範囲を誤ると壊れる側の
-// 代表例として、実際の GCS 署名付き URL に近い形で固定します。
+// 代表例として、実在の署名付き URL に近い形で固定します。
 func TestFormatMarkdownSignedURLIsNotEscaped(t *testing.T) {
 	const signedURL = "https://storage.googleapis.com/bucket/song.wav" +
 		"?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Expires=604800&X-Goog-Signature=abc123"

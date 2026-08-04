@@ -46,8 +46,7 @@ func (b *Body) Field(label, value string) *Body {
 // Code は「**ラベル:** `値`」の 1 行を追記します。値が空の場合は何もしません。
 // 識別子やコマンド名など、等幅で表示したい短い値に使用します。
 //
-// 等幅の値に単位や絵文字を添えたい、1 行に複数の等幅の値を並べたいなど、
-// 「ラベル + 単一の値」に収まらない場合は Mono と Field を組み合わせてください。
+// この形に収まらない行は Mono と Field を組み合わせてください。
 func (b *Body) Code(label, value string) *Body {
 	if value == "" {
 		return b

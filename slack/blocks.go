@@ -101,7 +101,6 @@ func buildSectionText(message string) string {
 // 見せるのが目的である以上、たまたま <https://…> の形をした文字列もリンク構文では
 // なくただの文字列として扱うべきだからです。
 //
-// 既に <URL|表示テキスト> 形式やメンションで書かれた mrkdwn はそのまま通ります。
 // 行頭の > による引用記法は使えません（エスケープ対象の文字と区別できないため）。
 func formatMarkdown(message string) string {
 	var sb strings.Builder
@@ -122,7 +121,7 @@ func formatMarkdown(message string) string {
 // リンク変換を先に、エスケープを後に行います。Slack が & < > の
 // エスケープを求めるのはプレーンテキストだけで、<URL|表示テキスト> の
 // 内側は構文として解釈済みのため対象外だからです。逆順にすると
-// GCS の署名付き URL のクエリ区切り & が &amp; に化けて URL 自体が壊れます。
+// 署名付き URL のクエリ区切り & が &amp; に化けて署名が変わり、URL が壊れます。
 func convertMarkdown(segment string) string {
 	segment = linkRegex.ReplaceAllString(segment, "<$2|$1>")
 	segment = escapeMrkdwn(segment)

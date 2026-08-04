@@ -43,9 +43,8 @@ func NewPipeline(notifier Notifier, titles Titles) *Pipeline {
 
 // WithTitles は見出しだけを差し替えた Pipeline を返します。元の Pipeline は変更しません。
 //
-// 見出しを実行時の条件で決めたい場合に使います（コマンドの種別ごとに完了通知の
-// 文言を変える、など）。titles は元の見出しとマージせず、そのまま置き換えます。
-// 使う結果の見出しだけ埋めれば十分です。
+// titles は元の見出しとマージせず、そのまま置き換えます。
+// これから送る結果の見出しだけ埋めれば十分です。
 //
 //	p.WithTitles(Titles{Success: titleFor(cmd)}).Success(ctx, body)
 //
@@ -56,8 +55,7 @@ func (p *Pipeline) WithTitles(titles Titles) *Pipeline {
 	return &Pipeline{notifier: p.notifier, titles: titles}
 }
 
-// Enabled は通知が有効かどうかを返します。
-// 本文の組み立てに費用がかかる場合、これで事前に打ち切れます。
+// Enabled は通知が有効かどうかを返します。判定は関数の Enabled と同じです。
 func (p *Pipeline) Enabled() bool { return Enabled(p.notifier) }
 
 // Success は正常終了を通知します。

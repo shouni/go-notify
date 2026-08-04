@@ -45,8 +45,7 @@ var _ notify.Notifier = (*notifier)(nil)
 // opts を指定すると、ユーザー名、アイコン絵文字、送信先チャンネルを上書きできます。
 //
 // webhookURL が空文字または空白のみの場合は、Slack 通知が設定されていない
-// ものとして notify.Disabled() を返します。通知はアプリケーションの主目的では
-// なく、宛先の未設定は起動を妨げる理由にならないためです。
+// ものとして notify.Disabled() を返します（理由は notify.Disabled を参照）。
 // 逆に webhookURL が設定されているのに client が nil の場合は、送信できない
 // 設定ミスなのでエラーを返します。
 //
