@@ -1,5 +1,7 @@
-// Package slack は、Slack Webhook へのメッセージ投稿と Block Kit 形式への
-// 整形を行うクライアントを提供します。
+// Package slack は、notify.Notifier の Slack Incoming Webhook 実装を提供します。
+//
+// 本文の標準 Markdown を Slack mrkdwn へ変換し、Block Kit 形式に組み立てて投稿します。
+// 入口は NewNotifier だけで、投稿処理そのものは公開していません。
 package slack
 
 import (
@@ -11,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/shouni/go-utils/jst"
+	"github.com/shouni/go-utils/text"
 	"github.com/slack-go/slack"
 )
 
@@ -155,6 +158,20 @@ func truncateSectionText(message string) string {
 		"current_runes", textLen,
 		"max_runes", maxSectionLength)
 	return truncateWithSuffixLimit(message, maxSectionLength, truncationSuffix)
+}
+
+// truncateWithSuffixLimit は文字列を指定文字数以内に収め、必要に応じてサフィックスを付与します。
+// 切り詰めはルーン単位です（メッセージが日本語なのでバイト単位では文字が壊れます）。
+func truncateWithSuffixLimit(s string, maxLen int, suffix string) string {
+	suffixLen := utf8.RuneCountInString(suffix)
+	if utf8.RuneCountInString(s) <= maxLen {
+		return s
+	}
+	if maxLen <= suffixLen {
+		return text.Truncate(s, maxLen, "")
+	}
+
+	return text.Truncate(s, maxLen-suffixLen, suffix)
 }
 
 // buildFooterBlock は送信時刻を表示する Slack コンテキストブロックを構築します。

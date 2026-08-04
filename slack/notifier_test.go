@@ -35,13 +35,24 @@ func (s *stubRequester) PostRawBodyAndFetchBytes(_ context.Context, _ string, _ 
 	return nil, nil
 }
 
+// blockSet は送信済みメッセージのブロック一式を返します。
+// 種別付きの通知は attachment に包まれるため、両方の置き場所を見ます。
+func (s *stubRequester) blockSet(t *testing.T) []slackgo.Block {
+	t.Helper()
+	if s.sent.Blocks != nil {
+		return s.sent.Blocks.BlockSet
+	}
+	if len(s.sent.Attachments) == 1 {
+		return s.sent.Attachments[0].Blocks.BlockSet
+	}
+	t.Fatal("Blocks も Attachments も設定されていません")
+	return nil
+}
+
 // sectionText は送信済みメッセージのセクションブロック本文を返します。
 func (s *stubRequester) sectionText(t *testing.T) string {
 	t.Helper()
-	if s.sent.Blocks == nil {
-		t.Fatal("Blocks が設定されていません")
-	}
-	for _, b := range s.sent.Blocks.BlockSet {
+	for _, b := range s.blockSet(t) {
 		if section, ok := b.(*slackgo.SectionBlock); ok && section.Text != nil {
 			return section.Text.Text
 		}
@@ -114,20 +125,109 @@ func TestNotifyUsesTitleAsHeader(t *testing.T) {
 	}
 }
 
-// TestNotifyGeneratesHeaderWhenTitleEmpty は、見出し未指定時に本文の
-// 先頭行から見出しが生成されることを検証します。
-func TestNotifyGeneratesHeaderWhenTitleEmpty(t *testing.T) {
+// TestNotifyRequiresTitle は、見出し未指定の通知が送信されずエラーになることを検証します。
+//
+// 本文の 1 行目から見出しを推測する機能は持ちません。何を見出しにするかは
+// 通知の意味を決める判断で、本文の先頭行がそれである保証は無いためです。
+func TestNotifyRequiresTitle(t *testing.T) {
 	stub := &stubRequester{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
 	if err != nil {
 		t.Fatalf("NewNotifier() = %v, want nil", err)
 	}
 
-	if err := n.Notify(context.Background(), notify.Message{Body: "先頭行\n二行目"}); err != nil {
+	if err := n.Notify(context.Background(), notify.Message{Body: "先頭行\n二行目"}); err == nil {
+		t.Error("Notify() = nil, want error")
+	}
+	if stub.sent.Text != "" {
+		t.Errorf("見出し無しで送信されました: %q", stub.sent.Text)
+	}
+}
+
+// TestNotifyAppliesOptions は、表示のカスタマイズがペイロードに反映されることを検証します。
+func TestNotifyAppliesOptions(t *testing.T) {
+	stub := &stubRequester{}
+	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test",
+		slack.WithUsername("AP Comp"),
+		slack.WithIconEmoji(":musical_note:"),
+		slack.WithChannel("#notifications"),
+	)
+	if err != nil {
+		t.Fatalf("NewNotifier() = %v, want nil", err)
+	}
+
+	if err := n.Notify(context.Background(), notify.Message{Title: "件名", Body: "本文"}); err != nil {
 		t.Fatalf("Notify() = %v, want nil", err)
 	}
-	if want := "📢 先頭行"; stub.sent.Text != want {
-		t.Errorf("Text = %q, want %q", stub.sent.Text, want)
+
+	if stub.sent.Username != "AP Comp" {
+		t.Errorf("Username = %q, want %q", stub.sent.Username, "AP Comp")
+	}
+	if stub.sent.IconEmoji != ":musical_note:" {
+		t.Errorf("IconEmoji = %q, want %q", stub.sent.IconEmoji, ":musical_note:")
+	}
+	if stub.sent.Channel != "#notifications" {
+		t.Errorf("Channel = %q, want %q", stub.sent.Channel, "#notifications")
+	}
+}
+
+// TestNotifyLevelSetsAttachmentColor は、結果の種別が attachment の色になることを検証します。
+func TestNotifyLevelSetsAttachmentColor(t *testing.T) {
+	tests := []struct {
+		name  string
+		level notify.Level
+		want  string
+	}{
+		{name: "成功は good", level: notify.LevelSuccess, want: "good"},
+		{name: "失敗は danger", level: notify.LevelFailure, want: "danger"},
+		{name: "スキップは warning", level: notify.LevelSkipped, want: "warning"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stub := &stubRequester{}
+			n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
+			if err != nil {
+				t.Fatalf("NewNotifier() = %v, want nil", err)
+			}
+
+			msg := notify.Message{Title: "件名", Body: "本文", Level: tt.level}
+			if err := n.Notify(context.Background(), msg); err != nil {
+				t.Fatalf("Notify() = %v, want nil", err)
+			}
+
+			if len(stub.sent.Attachments) != 1 {
+				t.Fatalf("attachment 数 = %d, want 1", len(stub.sent.Attachments))
+			}
+			if got := stub.sent.Attachments[0].Color; got != tt.want {
+				t.Errorf("Color = %q, want %q", got, tt.want)
+			}
+			if stub.sent.Blocks != nil {
+				t.Error("attachment 使用時にトップレベル Blocks が設定されています")
+			}
+		})
+	}
+}
+
+// TestNotifyWithoutLevelKeepsTopLevelBlocks は、種別未指定の通知が
+// attachment に包まれず従来どおり投稿されることを検証します。
+// 既存の通知の見た目を変えないための境界です。
+func TestNotifyWithoutLevelKeepsTopLevelBlocks(t *testing.T) {
+	stub := &stubRequester{}
+	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
+	if err != nil {
+		t.Fatalf("NewNotifier() = %v, want nil", err)
+	}
+
+	if err := n.Notify(context.Background(), notify.Message{Title: "件名", Body: "本文"}); err != nil {
+		t.Fatalf("Notify() = %v, want nil", err)
+	}
+
+	if len(stub.sent.Attachments) != 0 {
+		t.Errorf("attachment 数 = %d, want 0", len(stub.sent.Attachments))
+	}
+	if stub.sent.Blocks == nil {
+		t.Error("トップレベル Blocks が設定されていません")
 	}
 }
 

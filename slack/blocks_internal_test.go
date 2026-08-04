@@ -170,6 +170,16 @@ func TestFormatMarkdownUnterminatedFenceIsNotProtected(t *testing.T) {
 	}
 }
 
+// TestBuildSectionText は、本文全体が mrkdwn に変換されることを検証します。
+func TestBuildSectionText(t *testing.T) {
+	got := buildSectionText("## 見出し\n**重要**\n- item")
+	want := "*見出し*\n*重要*\n• item"
+
+	if got != want {
+		t.Errorf("buildSectionText() = %q, want %q", got, want)
+	}
+}
+
 // TestBuildSectionTextEmpty は、空白のみの本文がセクションを生まないことを検証します。
 func TestBuildSectionTextEmpty(t *testing.T) {
 	if got := buildSectionText("   \n  "); got != "" {

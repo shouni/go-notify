@@ -62,7 +62,7 @@ func (p *Pipeline) Enabled() bool { return Enabled(p.notifier) }
 
 // Success は正常終了を通知します。
 func (p *Pipeline) Success(ctx context.Context, body *Body) error {
-	return p.send(ctx, p.titles.Success, body)
+	return p.send(ctx, LevelSuccess, p.titles.Success, body)
 }
 
 // Failure は失敗を、原因とともに通知します。
@@ -70,7 +70,7 @@ func (p *Pipeline) Success(ctx context.Context, body *Body) error {
 func (p *Pipeline) Failure(ctx context.Context, body *Body, cause error) error {
 	body = orNewBody(body)
 	body.Error(errorLabel, cause)
-	return p.send(ctx, p.titles.Failure, body)
+	return p.send(ctx, LevelFailure, p.titles.Failure, body)
 }
 
 // Skipped は処理をスキップしたことを通知します。
@@ -85,17 +85,21 @@ func (p *Pipeline) Skipped(ctx context.Context, body *Body, reason error) error 
 	if reason != nil {
 		body.Error(reasonLabel, reason)
 	}
-	return p.send(ctx, p.titles.Skipped, body)
+	return p.send(ctx, LevelSkipped, p.titles.Skipped, body)
 }
 
-// send は見出しと本文を Message にまとめて送信します。
-func (p *Pipeline) send(ctx context.Context, title string, body *Body) error {
+// send は種別・見出し・本文を Message にまとめて送信します。
+//
+// 種別はここで確定します。結果ごとのメソッドを通っている以上、呼び出し側に
+// 指定させる理由が無く、指定させれば見出しと種別が食い違う余地を作るだけです。
+func (p *Pipeline) send(ctx context.Context, level Level, title string, body *Body) error {
 	if title == "" {
 		return errors.New("通知の見出しが設定されていません")
 	}
 	return p.notifier.Notify(ctx, Message{
 		Title: title,
 		Body:  orNewBody(body).String(),
+		Level: level,
 	})
 }
 
