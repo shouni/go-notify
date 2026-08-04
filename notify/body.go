@@ -46,12 +46,12 @@ func (b *Body) Field(label, value string) *Body {
 // Code は「**ラベル:** `値`」の 1 行を追記します。値が空の場合は何もしません。
 // 識別子やコマンド名など、等幅で表示したい短い値に使用します。
 //
-// この形に収まらない行は Mono と Field を組み合わせてください。
+// この形に収まらない行は CodeSpan と Field を組み合わせてください。
 func (b *Body) Code(label, value string) *Body {
 	if value == "" {
 		return b
 	}
-	b.writeLine(fmt.Sprintf("**%s:** %s", label, Mono(value)))
+	b.writeLine(fmt.Sprintf("**%s:** %s", label, CodeSpan(value)))
 	return b
 }
 
@@ -145,17 +145,17 @@ func (b *Body) separate() {
 	}
 }
 
-// Mono は s を等幅表示の記法で包んだ文字列を返します。s が空の場合は空文字を返すため、
-// そのまま Field へ渡せば行ごと省かれます。
+// CodeSpan は s をコードスパン（Markdown のインラインコード）記法で包んだ文字列を返します。
+// s が空の場合は空文字を返すため、そのまま Field へ渡せば行ごと省かれます。
 //
 // Body のメソッドは「ラベル + 単一の値」しか組み立てられないため、単位や絵文字を
 // 添えたい呼び出し側がバックティックを直書きしがちです。しかし本文の Markdown 記法を
 // 知るのは本パッケージだけ、というのがチャネル非依存を成り立たせている境界なので、
 // 記法を書く必要がある場合の出口をここに用意します。
 //
-//	body.Field("Seed", notify.Mono(strconv.Itoa(seed))+" 🎲")
-//	body.Field("ブランチ", notify.Mono(base)+" ← "+notify.Mono(feature))
-func Mono(s string) string {
+//	body.Field("Seed", notify.CodeSpan(strconv.Itoa(seed))+" 🎲")
+//	body.Field("ブランチ", notify.CodeSpan(base)+" ← "+notify.CodeSpan(feature))
+func CodeSpan(s string) string {
 	if s == "" {
 		return ""
 	}
