@@ -151,28 +151,13 @@ body.Field("ブランチ", notify.CodeSpan(base)+" ← "+notify.CodeSpan(feature
 
 ### 表示名・アイコン・チャンネル
 
-**コードからは変えられないのが普通です。** Slack アプリ経由で作成した Incoming Webhook は、
-投稿先チャンネル・表示名・アイコンを常にアプリの設定から取り、ペイロードでの上書きを
-無視します（[公式ドキュメント](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks)）。
+`slack.WithUsername` / `WithIconEmoji` / `WithChannel` がありますが、**Slack アプリ経由で
+作成した Incoming Webhook では効きません**。投稿先・表示名・アイコンは常にアプリの設定を
+継承します（[公式ドキュメント](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks)）。
+効くのは旧来の custom integration 版だけです。
 
 サービスごとに表示を変えたい場合は、**Slack アプリを分けて**それぞれの Webhook URL を
 使ってください。コード変更は不要です。
-
-上書きが効くのは旧来の custom integration 版 Webhook だけです。その場合は
-関数オプションで指定します（設定値をどこから読むかは呼び出し側の責務です）。
-
-```go
-notifier, err := slack.NewNotifier(httpClient, webhookURL,
-    slack.WithUsername("Release Bot"),
-    slack.WithIconEmoji(":rocket:"),
-    slack.WithChannel("#notifications"),
-)
-```
-
-既定値は持ちません。指定しなければこれらのフィールドは送信されません。
-
-投稿ごとに表示を変えるには Webhook ではなく `chat.postMessage`（Bot トークン +
-`chat:write.customize` スコープ）が必要です。本パッケージは Webhook 専用なので対応していません。
 
 ---
 
