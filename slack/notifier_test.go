@@ -209,6 +209,35 @@ func TestNotifyLevelSetsAttachmentColor(t *testing.T) {
 	}
 }
 
+// TestNotifyLevelDoesNotDuplicateTitle は、色付きの通知で見出しが 2 回出ないことを検証します。
+//
+// blocks が attachment 側にあると、トップレベルの Text はフォールバックではなく
+// メッセージ本文として描画されます。Text に見出しを入れたままだと、attachment 内の
+// 見出しブロックと合わせて Slack 上に見出しが 2 回並びます。
+// フォールバックは Attachment.Fallback が担うため、プッシュ通知の文言は残ります。
+func TestNotifyLevelDoesNotDuplicateTitle(t *testing.T) {
+	stub := &stubRequester{}
+	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
+	if err != nil {
+		t.Fatalf("NewNotifier() = %v, want nil", err)
+	}
+
+	msg := notify.Message{Title: "✅ 完了しました", Body: "本文", Level: notify.LevelSuccess}
+	if err := n.Notify(context.Background(), msg); err != nil {
+		t.Fatalf("Notify() = %v, want nil", err)
+	}
+
+	if stub.sent.Text != "" {
+		t.Errorf("Text = %q, want empty（attachment 内の見出しと重複します）", stub.sent.Text)
+	}
+	if len(stub.sent.Attachments) != 1 {
+		t.Fatalf("attachment 数 = %d, want 1", len(stub.sent.Attachments))
+	}
+	if got := stub.sent.Attachments[0].Fallback; got != msg.Title {
+		t.Errorf("Fallback = %q, want %q", got, msg.Title)
+	}
+}
+
 // TestNotifyWithoutLevelKeepsTopLevelBlocks は、種別未指定の通知が
 // attachment に包まれず従来どおり投稿されることを検証します。
 // 既存の通知の見た目を変えないための境界です。

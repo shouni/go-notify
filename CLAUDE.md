@@ -62,6 +62,8 @@ Both packages live in subdirectories; nothing sits at the module root. That matc
 
 Rendering is the channel's call. `slack` maps the three levels to `good` / `danger` / `warning` and wraps the blocks in a coloured attachment; `LevelNone` stays as top-level blocks, because an attachment indents the body and there is no reason to change how existing, level-less notifications look.
 
+The two branches set the fallback text differently, and this is not cosmetic. With top-level `blocks`, Slack treats `WebhookMessage.Text` as fallback only and does not render it. Move the blocks into an attachment and `Text` becomes actual message body, so leaving the title there prints it twice — once as text, once in the attachment's header block. The coloured branch therefore leaves `Text` empty and puts the title in `Attachment.Fallback`, which keeps push-notification wording intact. `TestNotifyLevelDoesNotDuplicateTitle` pins it; v1.2.0 and v1.2.1 shipped without it and duplicated every heading.
+
 `NewNotifier` is the only exported constructor. A `NewClient` returning a concrete `*Client`, plus `SendText` / `SendTextWithHeader`, used to sit beneath it; all six consumers went through `NewNotifier` and none touched them, so they were removed rather than kept as a second way in.
 
 ### Slack escaping rules

@@ -118,7 +118,6 @@ func (n *notifier) buildWebhookMessage(msg notify.Message) (slack.WebhookMessage
 	}
 
 	payload := slack.WebhookMessage{
-		Text:      msg.Title,
 		Username:  n.username,
 		IconEmoji: n.iconEmoji,
 		Channel:   n.channel,
@@ -126,13 +125,22 @@ func (n *notifier) buildWebhookMessage(msg notify.Message) (slack.WebhookMessage
 
 	color, colored := levelColors[msg.Level]
 	if !colored {
+		// トップレベルの blocks がある場合、Text は本文として描画されず
+		// プッシュ通知などのフォールバックにだけ使われます。
+		payload.Text = msg.Title
 		payload.Blocks = &slack.Blocks{BlockSet: blocks}
 		return payload, nil
 	}
 
+	// attachment に包む場合は Text を空にします。blocks が attachment 側にあると
+	// Text はフォールバックではなくメッセージ本文として描画されるため、
+	// attachment 内の見出しブロックと合わせて見出しが 2 回出ます。
+	// フォールバックの役目は Attachment.Fallback が引き継ぐので、
+	// プッシュ通知の文言は失われません。
 	payload.Attachments = []slack.Attachment{{
-		Color:  color,
-		Blocks: slack.Blocks{BlockSet: blocks},
+		Color:    color,
+		Fallback: msg.Title,
+		Blocks:   slack.Blocks{BlockSet: blocks},
 	}}
 	return payload, nil
 }
