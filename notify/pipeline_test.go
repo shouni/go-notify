@@ -51,7 +51,7 @@ func TestPipelineTitles(t *testing.T) {
 			rec := &recorder{}
 			p := notify.NewPipeline(rec, testTitles)
 
-			if err := tt.call(p, notify.NewBody().Code("Command", "compose")); err != nil {
+			if err := tt.call(p, notify.NewBody().Code("Command", "run_task")); err != nil {
 				t.Fatalf("通知に失敗しました: %v", err)
 			}
 			if len(rec.got) != 1 {
@@ -64,17 +64,89 @@ func TestPipelineTitles(t *testing.T) {
 	}
 }
 
+// TestPipelineSetsLevel は、結果ごとの種別が自動で設定されることを検証します。
+// 呼び出し側は Level を指定しないので、見出しと種別が食い違う余地がありません。
+func TestPipelineSetsLevel(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(p *notify.Pipeline) error
+		want notify.Level
+	}{
+		{
+			name: "Success",
+			call: func(p *notify.Pipeline) error { return p.Success(context.Background(), nil) },
+			want: notify.LevelSuccess,
+		},
+		{
+			name: "Failure",
+			call: func(p *notify.Pipeline) error { return p.Failure(context.Background(), nil, errors.New("原因")) },
+			want: notify.LevelFailure,
+		},
+		{
+			name: "Skipped",
+			call: func(p *notify.Pipeline) error { return p.Skipped(context.Background(), nil, nil) },
+			want: notify.LevelSkipped,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := &recorder{}
+			if err := tt.call(notify.NewPipeline(rec, testTitles)); err != nil {
+				t.Fatalf("通知に失敗しました: %v", err)
+			}
+			if len(rec.got) != 1 {
+				t.Fatalf("送信件数 = %d, want 1", len(rec.got))
+			}
+			if got := rec.got[0].Level; got != tt.want {
+				t.Errorf("Level = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestMessageLevelZeroValueIsNone は、Level のゼロ値が未指定を表すことを検証します。
+// Message を直接組み立てている既存の呼び出し側の挙動を変えないための前提です。
+func TestMessageLevelZeroValueIsNone(t *testing.T) {
+	var msg notify.Message
+	if msg.Level != notify.LevelNone {
+		t.Errorf("ゼロ値の Level = %v, want %v", msg.Level, notify.LevelNone)
+	}
+}
+
+// TestLevelString は Level の名前を検証します。
+func TestLevelString(t *testing.T) {
+	tests := []struct {
+		level notify.Level
+		want  string
+	}{
+		{notify.LevelNone, "none"},
+		{notify.LevelSuccess, "success"},
+		{notify.LevelFailure, "failure"},
+		{notify.LevelSkipped, "skipped"},
+		{notify.Level(99), "none"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if got := tt.level.String(); got != tt.want {
+				t.Errorf("String() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestPipelineFailureAppendsCause は、失敗通知が本文にエラー内容を追記することを検証します。
 func TestPipelineFailureAppendsCause(t *testing.T) {
 	rec := &recorder{}
 	p := notify.NewPipeline(rec, testTitles)
 
 	body := notify.NewBody().Code("Job ID", "job-1")
-	if err := p.Failure(context.Background(), body, errors.New("Veo がタイムアウトしました")); err != nil {
+	if err := p.Failure(context.Background(), body, errors.New("タイムアウトしました")); err != nil {
 		t.Fatalf("通知に失敗しました: %v", err)
 	}
 
-	want := "**Job ID:** `job-1`\n\n**エラー内容:**\nVeo がタイムアウトしました"
+	want := "**Job ID:** `job-1`\n\n**エラー内容:**\nタイムアウトしました"
 	if rec.got[0].Body != want {
 		t.Errorf("Body = %q, want %q", rec.got[0].Body, want)
 	}
@@ -170,7 +242,7 @@ func TestPipelineWithTitles(t *testing.T) {
 	rec := &recorder{}
 	base := notify.NewPipeline(rec, testTitles)
 
-	err := base.WithTitles(notify.Titles{Success: "🎨 デザインシート生成が完了しました"}).
+	err := base.WithTitles(notify.Titles{Success: "🎨 別種の処理が完了しました"}).
 		Success(context.Background(), notify.NewBody().Field("Job ID", "job-1"))
 	if err != nil {
 		t.Fatalf("通知に失敗しました: %v", err)
@@ -179,7 +251,7 @@ func TestPipelineWithTitles(t *testing.T) {
 	if len(rec.got) != 1 {
 		t.Fatalf("送信件数 = %d, want 1", len(rec.got))
 	}
-	if got, want := rec.got[0].Title, "🎨 デザインシート生成が完了しました"; got != want {
+	if got, want := rec.got[0].Title, "🎨 別種の処理が完了しました"; got != want {
 		t.Errorf("Title = %q, want %q", got, want)
 	}
 }
@@ -249,7 +321,7 @@ func TestPipelineFailureAppendsToGivenBody(t *testing.T) {
 	rec := &recorder{}
 	p := notify.NewPipeline(rec, testTitles)
 
-	body := notify.NewBody().Field("Title", "曲名")
+	body := notify.NewBody().Field("Title", "サンプルタイトル")
 	if err := p.Failure(context.Background(), body, errors.New("原因")); err != nil {
 		t.Fatalf("通知に失敗しました: %v", err)
 	}

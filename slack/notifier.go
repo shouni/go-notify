@@ -3,29 +3,49 @@ package slack
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/shouni/go-http-kit/httpkit"
 	"github.com/shouni/go-notify/notify"
+	"github.com/slack-go/slack"
 )
 
-// Client が notify.Notifier を満たすことを保証します。
-var _ notify.Notifier = (*Client)(nil)
+const (
+	// defaultUsername はデフォルトのユーザー名です。
+	defaultUsername = "Bot"
+	// defaultIconEmoji はデフォルトの絵文字アイコンを表します。
+	defaultIconEmoji = ":robot_face:"
+)
 
-// Notify は notify.Notifier インターフェースを実装します。
-// msg.Title が空の場合は本文の先頭行から見出しを生成します。
-func (s *Client) Notify(ctx context.Context, msg notify.Message) error {
-	if msg.Title == "" {
-		return s.SendText(ctx, msg.Body)
-	}
-	return s.SendTextWithHeader(ctx, msg.Title, msg.Body)
+// levelColors は結果の種別を Slack の attachment の色に対応させます。
+// good / danger / warning は Slack 側の組み込みキーワードです。
+//
+// LevelNone は意図的に含めません。種別が未指定なら色を付けず、
+// トップレベルの blocks として投稿します。
+var levelColors = map[notify.Level]string{
+	notify.LevelSuccess: "good",
+	notify.LevelFailure: "danger",
+	notify.LevelSkipped: "warning",
 }
 
+// notifier は Slack Incoming Webhook へ通知を投稿します。
+type notifier struct {
+	client     httpkit.Requester
+	webhookURL string
+	username   string
+	iconEmoji  string
+	channel    string
+}
+
+// notifier が notify.Notifier を満たすことを保証します。
+var _ notify.Notifier = (*notifier)(nil)
+
 // NewNotifier は Slack Incoming Webhook への notify.Notifier を生成します。
+// opts を指定すると、ユーザー名、アイコン絵文字、送信先チャンネルを上書きできます。
 //
 // webhookURL が空文字または空白のみの場合は、Slack 通知が設定されていない
-// ものとして notify.Disabled() を返します。通知はアプリケーションの主目的では
-// なく、宛先の未設定は起動を妨げる理由にならないためです。
+// ものとして notify.Disabled() を返します（理由は notify.Disabled を参照）。
 // 逆に webhookURL が設定されているのに client が nil の場合は、送信できない
 // 設定ミスなのでエラーを返します。
 //
@@ -54,5 +74,65 @@ func NewNotifier(client httpkit.Requester, webhookURL string, opts ...Option) (n
 		return nil, errors.New("slack Webhook URLが設定されていますが、HTTPクライアントがnilです")
 	}
 
-	return NewClient(client, webhookURL, opts...)
+	n := &notifier{
+		client:     client,
+		webhookURL: webhookURL,
+		username:   defaultUsername,
+		iconEmoji:  defaultIconEmoji,
+	}
+
+	for _, opt := range opts {
+		opt(n)
+	}
+
+	return n, nil
+}
+
+// Notify は notify.Notifier インターフェースを実装します。
+//
+// msg.Title は必須です。空の場合はエラーを返します。本文から見出しを
+// 推測することはしません。何を見出しにするかは通知の意味を決める判断であり、
+// 本文の 1 行目がそれである保証はどこにもないためです。
+func (n *notifier) Notify(ctx context.Context, msg notify.Message) error {
+	payload, err := n.buildWebhookMessage(msg)
+	if err != nil {
+		return err
+	}
+
+	if _, err := n.client.PostJSONAndFetchBytes(ctx, n.webhookURL, payload); err != nil {
+		return fmt.Errorf("slack Webhookメッセージの送信に失敗しました: %w", err)
+	}
+
+	return nil
+}
+
+// buildWebhookMessage は Slack Incoming Webhook に送信するペイロードを構築します。
+//
+// 種別に色が対応する場合だけ attachment に包みます。attachment は左端に色帯が付く
+// 代わりに本文が少し内側に寄るため、種別が未指定の通知まで見た目を変えないよう、
+// LevelNone はトップレベルの blocks のままにします。
+func (n *notifier) buildWebhookMessage(msg notify.Message) (slack.WebhookMessage, error) {
+	blocks, err := buildMessageBlocks(msg.Title, msg.Body)
+	if err != nil {
+		return slack.WebhookMessage{}, fmt.Errorf("slack Block Kitの構築に失敗しました: %w", err)
+	}
+
+	payload := slack.WebhookMessage{
+		Text:      msg.Title,
+		Username:  n.username,
+		IconEmoji: n.iconEmoji,
+		Channel:   n.channel,
+	}
+
+	color, colored := levelColors[msg.Level]
+	if !colored {
+		payload.Blocks = &slack.Blocks{BlockSet: blocks}
+		return payload, nil
+	}
+
+	payload.Attachments = []slack.Attachment{{
+		Color:  color,
+		Blocks: slack.Blocks{BlockSet: blocks},
+	}}
+	return payload, nil
 }

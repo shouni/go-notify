@@ -16,13 +16,13 @@ func TestBodyWriters(t *testing.T) {
 	}{
 		{
 			name:  "Field はラベルを太字にする",
-			build: func(b *notify.Body) { b.Field("Title", "夏の終わり") },
-			want:  "**Title:** 夏の終わり",
+			build: func(b *notify.Body) { b.Field("Title", "サンプルタイトル") },
+			want:  "**Title:** サンプルタイトル",
 		},
 		{
 			name:  "Code は値を等幅にする",
-			build: func(b *notify.Body) { b.Code("Command", "compose_video") },
-			want:  "**Command:** `compose_video`",
+			build: func(b *notify.Body) { b.Code("Command", "run_task") },
+			want:  "**Command:** `run_task`",
 		},
 		{
 			name:  "Link は表示テキスト付きリンクにする",
@@ -42,9 +42,9 @@ func TestBodyWriters(t *testing.T) {
 		{
 			name: "複数行は改行で連結される",
 			build: func(b *notify.Body) {
-				b.Code("Command", "compose").Field("Title", "曲名")
+				b.Code("Command", "run_task").Field("Title", "サンプルタイトル")
 			},
-			want: "**Command:** `compose`\n**Title:** 曲名",
+			want: "**Command:** `run_task`\n**Title:** サンプルタイトル",
 		},
 	}
 
@@ -111,9 +111,9 @@ func TestBodyError(t *testing.T) {
 		{
 			name: "本文がある場合は空行で区切る",
 			build: func(b *notify.Body) {
-				b.Code("Command", "compose").Error("エラー内容", errors.New("失敗しました"))
+				b.Code("Command", "run_task").Error("エラー内容", errors.New("失敗しました"))
 			},
-			want: "**Command:** `compose`\n\n**エラー内容:**\n失敗しました",
+			want: "**Command:** `run_task`\n\n**エラー内容:**\n失敗しました",
 		},
 	}
 
@@ -132,9 +132,9 @@ func TestBodyError(t *testing.T) {
 // 途中終了しないことを検証します。
 func TestBodyBlockSanitizesBacktick(t *testing.T) {
 	b := notify.NewBody()
-	b.Block("エラー詳細", "exec `gsutil` failed")
+	b.Block("エラー詳細", "exec `run_task` failed")
 
-	want := "**エラー詳細:**\n```\nexec 'gsutil' failed\n```"
+	want := "**エラー詳細:**\n```\nexec 'run_task' failed\n```"
 	if got := b.String(); got != want {
 		t.Errorf("String() = %q, want %q", got, want)
 	}
@@ -183,7 +183,7 @@ func TestMono(t *testing.T) {
 		in   string
 		want string
 	}{
-		{name: "値を等幅で包む", in: "compose_video", want: "`compose_video`"},
+		{name: "値を等幅で包む", in: "run_task", want: "`run_task`"},
 		{name: "バックティックを ' に置き換える", in: "ls `pwd`", want: "`ls 'pwd'`"},
 		{name: "空文字は空文字のまま", in: "", want: ""},
 	}

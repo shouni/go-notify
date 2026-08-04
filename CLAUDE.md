@@ -26,7 +26,7 @@ CI (`.github/workflows/ci.yml`) runs three jobs on push/PR to `main`/`develop`: 
 
 ```
 notify/       # the channel-agnostic abstraction
-  notify.go     # Notifier / Message / Disabled
+  notify.go     # Notifier / Message / Level / Disabled
   body.go       # Body — notification body builder
   pipeline.go   # Pipeline — success / failure / skipped triple, WithTitles for per-call headings
 slack/        # Slack Incoming Webhook implementation
@@ -48,13 +48,21 @@ Both packages live in subdirectories; nothing sits at the module root. That matc
 
 ### Disabled, not error
 
-`slack.NewNotifier` returns `notify.Disabled()` when the webhook URL is blank or whitespace, and only errors when a URL *is* configured but the HTTP client is nil. This unifies a behaviour that had drifted: five services treated a blank webhook as "notifications off", while `ap-voice` let `slack.NewClient` fail and turned a missing optional setting into a startup error.
+`slack.NewNotifier` returns `notify.Disabled()` when the webhook URL is blank or whitespace, and only errors when a URL *is* configured but the HTTP client is nil. This unifies a behaviour that had drifted: five services treated a blank webhook as "notifications off", while `ap-voice` turned a missing optional setting into a startup error.
 
 `notify.Enabled(n)` reports whether a notifier actually sends, so callers can skip expensive body construction. `Pipeline.Enabled()` forwards it.
 
 `Pipeline.WithTitles` returns a copy with different headings and exists because `ap-comic` needs a per-command title and, without it, dropped out of `Pipeline` entirely — re-declaring `errorLabel`, calling `notify.Enabled` by hand, and open-coding `Notify` plus its error wrapping in two places. Titles are replaced, not merged: each call site fills in only the outcome it is about to send.
 
-Note the two constructors differ on purpose: `slack.NewClient` still rejects an empty webhook URL (it returns a concrete `*Client`, and a client that cannot post is meaningless). `NewNotifier` is the one with the optional-feature semantics.
+### Level
+
+`Message.Level` carries the outcome in a form a channel can act on, which a heading string cannot. All six services had been encoding it as `✅` / `❌` / `⏭️` inside their title text — six independent instances of the same workaround, which is what justified adding it.
+
+`Pipeline` sets it; callers never pass it. Letting a caller supply both a heading and a level only creates room for the two to disagree. `LevelNone` is the zero value, so a `Message` built by hand keeps its current behaviour, and `slack` renders it exactly as before.
+
+Rendering is the channel's call. `slack` maps the three levels to `good` / `danger` / `warning` and wraps the blocks in a coloured attachment; `LevelNone` stays as top-level blocks, because an attachment indents the body and there is no reason to change how existing, level-less notifications look.
+
+`NewNotifier` is the only exported constructor. A `NewClient` returning a concrete `*Client`, plus `SendText` / `SendTextWithHeader`, used to sit beneath it; all six consumers went through `NewNotifier` and none touched them, so they were removed rather than kept as a second way in.
 
 ### Slack escaping rules
 
@@ -78,8 +86,7 @@ The sibling repo `ap-mcp-slack` reached the opposite default for the same reason
 
 ### Slack package internals
 
-- `client.go` — `Client` holds the requester, webhook URL, and display overrides. `SendTextWithHeader` posts an explicit header + body; `SendText` derives the header from the body's first line (`📢 ` prefix, 50 runes, `📢 通知メッセージ` fallback).
-- `notifier.go` — `Notify` implements `notify.Notifier`, falling back to `SendText` when `Message.Title` is empty. `NewNotifier` holds the disabled-vs-error policy above.
+- `notifier.go` — the unexported `notifier` holds the requester, webhook URL, and display overrides. `NewNotifier` holds the disabled-vs-error policy above; `Notify` implements `notify.Notifier`. An empty `Message.Title` is an error, not a cue to guess: deriving a heading from the body's first line was a feature nothing used, and `Pipeline.send` already rejects an empty title, so the library said no through two separate paths.
 - `options.go` — `WithUsername`, `WithIconEmoji`, `WithChannel`.
 - `blocks.go` — Markdown→mrkdwn conversion, escaping, Block Kit assembly, and section truncation at `maxSectionLength` (2900 runes, under Slack's 3000 limit).
 

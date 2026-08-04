@@ -103,7 +103,7 @@ pipeline.WithTitles(notify.Titles{Success: titleFor(cmd)}).Success(ctx, body)
 
 | メソッド | 出力（Markdown） | Slack 表示 |
 | :--- | :--- | :--- |
-| `Field("Title", "夏の終わり")` | `**Title:** 夏の終わり` | **Title:** 夏の終わり |
+| `Field("Title", "サンプル")` | `**Title:** サンプル` | **Title:** サンプル |
 | `Code("Command", "compose")` | ``**Command:** `compose` `` | **Command:** `compose` |
 | `Link("Detail", url, "job-1")` | `**Detail:** [job-1](url)` | **Detail:** [job-1](url) |
 | `LinkOrField("Output", url, uri)` | url があればリンク、無ければ素の値 | 〃 |
@@ -130,6 +130,21 @@ body.Field("Seed", notify.Mono(strconv.Itoa(seed))+" 🎲")
 body.Field("ブランチ", notify.Mono(base)+" ← "+notify.Mono(feature))
 ```
 
+### 結果の種別（Level）
+
+`Message.Level` は結果の種別を運びます。`Pipeline` を使えば自動で設定されるため、
+呼び出し側で指定する必要はありません。
+
+| Level | Pipeline のメソッド | Slack の表示 |
+| :--- | :--- | :--- |
+| `LevelSuccess` | `Success` | attachment の色帯 `good`（緑） |
+| `LevelFailure` | `Failure` | `danger`（赤） |
+| `LevelSkipped` | `Skipped` | `warning`（黄） |
+| `LevelNone`（ゼロ値） | — | 色なし。従来どおりトップレベル blocks |
+
+見出しに `✅` `❌` を書いて結果を示す必要はなくなりますが、残しても構いません。
+`Message` を直接組み立てている場合は `LevelNone` のままなので、表示は変わりません。
+
 ### 表示のカスタマイズ
 
 投稿時のユーザー名・アイコン・チャンネルは関数オプションで上書きできます。
@@ -150,7 +165,7 @@ notifier, err := slack.NewNotifier(httpClient, webhookURL,
 ```text
 go-notify/
 ├── notify/       # チャネル非依存の抽象
-│   ├── notify.go     # Notifier / Message / Disabled
+│   ├── notify.go     # Notifier / Message / Level / Disabled
 │   ├── body.go       # Body: 通知本文のビルダー（標準 Markdown を出力）
 │   └── pipeline.go   # Pipeline: 成功・失敗・スキップの定型通知
 └── slack/        # Slack Incoming Webhook 実装（Block Kit / mrkdwn 変換）

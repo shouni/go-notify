@@ -1,5 +1,7 @@
-// Package slack は、Slack Webhook へのメッセージ投稿と Block Kit 形式への
-// 整形を行うクライアントを提供します。
+// Package slack は、notify.Notifier の Slack Incoming Webhook 実装を提供します。
+//
+// 本文の標準 Markdown を Slack mrkdwn へ変換し、Block Kit 形式に組み立てて投稿します。
+// 入口は NewNotifier だけで、投稿処理そのものは公開していません。
 package slack
 
 import (
@@ -11,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/shouni/go-utils/jst"
+	"github.com/shouni/go-utils/text"
 	"github.com/slack-go/slack"
 )
 
@@ -98,7 +101,6 @@ func buildSectionText(message string) string {
 // 見せるのが目的である以上、たまたま <https://…> の形をした文字列もリンク構文では
 // なくただの文字列として扱うべきだからです。
 //
-// 既に <URL|表示テキスト> 形式やメンションで書かれた mrkdwn はそのまま通ります。
 // 行頭の > による引用記法は使えません（エスケープ対象の文字と区別できないため）。
 func formatMarkdown(message string) string {
 	var sb strings.Builder
@@ -119,7 +121,7 @@ func formatMarkdown(message string) string {
 // リンク変換を先に、エスケープを後に行います。Slack が & < > の
 // エスケープを求めるのはプレーンテキストだけで、<URL|表示テキスト> の
 // 内側は構文として解釈済みのため対象外だからです。逆順にすると
-// GCS の署名付き URL のクエリ区切り & が &amp; に化けて URL 自体が壊れます。
+// 署名付き URL のクエリ区切り & が &amp; に化けて署名が変わり、URL が壊れます。
 func convertMarkdown(segment string) string {
 	segment = linkRegex.ReplaceAllString(segment, "<$2|$1>")
 	segment = escapeMrkdwn(segment)
@@ -155,6 +157,20 @@ func truncateSectionText(message string) string {
 		"current_runes", textLen,
 		"max_runes", maxSectionLength)
 	return truncateWithSuffixLimit(message, maxSectionLength, truncationSuffix)
+}
+
+// truncateWithSuffixLimit は文字列を指定文字数以内に収め、必要に応じてサフィックスを付与します。
+// 切り詰めはルーン単位です（メッセージが日本語なのでバイト単位では文字が壊れます）。
+func truncateWithSuffixLimit(s string, maxLen int, suffix string) string {
+	suffixLen := utf8.RuneCountInString(suffix)
+	if utf8.RuneCountInString(s) <= maxLen {
+		return s
+	}
+	if maxLen <= suffixLen {
+		return text.Truncate(s, maxLen, "")
+	}
+
+	return text.Truncate(s, maxLen-suffixLen, suffix)
 }
 
 // buildFooterBlock は送信時刻を表示する Slack コンテキストブロックを構築します。
