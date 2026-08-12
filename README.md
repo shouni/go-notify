@@ -29,8 +29,9 @@ Slack 固有の話（記法の変換・リトライ・制限）は [docs/slack.m
   通知はアプリケーションの主目的ではなく、宛先の未設定で起動を止める理由はありません。
 * **堅牢な通信基盤**
   外部通信はすべて [`go-http-kit`](https://github.com/shouni/go-http-kit) の
-  `httpkit.Requester` 経由で、指数バックオフ・タイムアウト・SSRF 対策を共有します。
-  本パッケージ自身はリトライも `http.Client` も持ちません。
+  `httpkit.Requester` 経由です。タイムアウト・SSRF 対策・リトライ方針は
+  渡されたクライアントのものをそのまま使い、本パッケージ自身は
+  リトライも `http.Client` も持ちません。
 
 ---
 
@@ -106,22 +107,29 @@ pipeline.WithTitles(notify.Titles{Success: titleFor(cmd)}).Success(ctx, body)
 
 ### Body の出力形式
 
-| メソッド | 出力（Markdown） | Slack 表示 |
-| :--- | :--- | :--- |
-| `Field("Title", "サンプル")` | `**Title:** サンプル` | **Title:** サンプル |
-| `Code("Command", "run_task")` | ``**Command:** `run_task` `` | **Command:** `run_task` |
-| `Link("Detail", url, "job-1")` | `**Detail:** [job-1](url)` | **Detail:** [job-1](url) |
-| `LinkOrField("Out", url, uri)` | url があれば `Link`、無ければ `Field` と同じ | 〃 |
-| `Text("素の行")` | `素の行` | 素の行 |
-| `Error("エラー内容", err)` | `**エラー内容:**` + 改行 + 内容 | 〃 |
-| `Block("実行ログ", s)` | `**実行ログ:**` + フェンス付きコードブロック | 〃 |
+| メソッド | 出力（Markdown） |
+| :--- | :--- |
+| `Field("Title", "サンプル")` | `**Title:** サンプル` |
+| `Code("Command", "run_task")` | ``**Command:** `run_task` `` |
+| `Link("Detail", url, "job-1")` | `**Detail:** [job-1](url)` |
+| `LinkOrField("Out", url, uri)` | url があれば `Link`、無ければ `Field` と同じ |
+| `Text("素の行")` | `素の行` |
+| `Heading("生成結果")` | `## 生成結果` |
+| `Bullet("scene_01.png")` | `- scene_01.png` |
+| `Error("エラー内容", err)` | `**エラー内容:**` + 改行 + 内容 |
+| `Block("実行ログ", s)` | `**実行ログ:**` + フェンス付きコードブロック |
 
-値が空の場合は行ごと出力されません。`Error` / `Block` は値が無ければ `N/A` を表示し、
-本文が既にある場合は 1 行空けてから追記します。
+値が空の場合は行ごと出力されません。`Error` / `Block` は値が無ければ `N/A` を表示します。
 1 行も書き込まれなかった `Body` の `String()` は `N/A` を返します。
+`Heading` / `Error` / `Block` は、本文が既にある場合は 1 行空けてから追記します。
 
-`Block` の中身は各チャネルの記法変換の対象外です。コマンド出力やログを
-原文のまま見せるための入口なので、`- ` や `**` が書き換わることはありません。
+件数が可変の値を並べるときは `Field` を繰り返すより `Bullet`、
+項目が多くて意味のまとまりで区切りたいときは `Heading` を使います。
+`- ` や `## ` を `Text` に手書きする必要はありません
+（記法を知る場所を `notify` パッケージに留めるためです）。
+
+`Block` の中身は各チャネルの記法変換の対象外で、`- ` や `**` は書き換わりません
+（詳細は [docs/slack.md](docs/slack.md)）。
 
 ### 値をコードスパンにする
 

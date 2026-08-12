@@ -45,6 +45,8 @@ Both packages live in subdirectories; nothing sits at the module root. That matc
 
 `notify.CodeSpan` is the deliberate escape hatch from that seam. `Code` only builds "label + one value", so callers wanting a unit, an emoji, or two monospaced values on one line were writing backticks inline (`fmt.Sprintf("`%d` 🎲", seed)` in `ap-comp`, `fmt.Sprintf("`%s` ← `%s`", base, feature)` in `git-gemini-web`) — which is the invariant above starting to leak into consumers. `CodeSpan` gives them the markup without letting them author it. If a new case can't be expressed with `CodeSpan` + `Field`, add a `Body` method rather than letting a call site write Markdown.
 
+`Body.Heading` and `Body.Bullet` exist for the same reason. `slack/blocks.go` converts `## ` and `- ` (`headerRegex`, `listItemRegex`), but for a while no `Body` method emitted either, so a caller wanting a sub-heading or a variable-length list had to hand-write the markup through `Text` — the same leak `CodeSpan` was added to plug. `TestNotifyRendersHeadingAndBulletAsMrkdwn` pins the pair to the conversion.
+
 `Body.Block` emits its fences on their own lines. `` ```content``` `` on one line is not a fenced block in CommonMark — the first content line is eaten as the info string and the closing fence never matches — and `slack/blocks.go` relies on the line-anchored form to find blocks to protect.
 
 ### Disabled, not error
@@ -77,6 +79,8 @@ Blockquote (`>` at line start) is consequently unsupported; it is indistinguisha
 
 Fenced code blocks are exempt from markup conversion but not from escaping. `formatMarkdown` splits on `fencedBlockRegex` and runs `convertMarkdown` only outside the fences; inside, it applies `mrkdwnEscaper` directly rather than `escapeMrkdwn`, because a block exists to show text verbatim — a string that happens to look like `<https://…>` is a string there, not a link. Without the split, `Body.Block` mangles exactly what it is for: a pasted stack trace's `- ` becomes `• ` and `**` becomes `*`. `TestFormatMarkdownPreservesCodeBlockContent` and `TestFormatMarkdownConvertsAroundCodeBlock` pin the two sides. An unterminated fence deliberately does *not* match, so one broken fence can't silently exempt the rest of the message.
 
+`linkRegex` allows one level of balanced parentheses in the URL. Ending the URL at the first `)` truncated links like `https://example.com/a_(b)_c` mid-path and spliced the remainder in after the display text, producing `<https://example.com/a_(b|text>_c)` — worse than not converting at all. A URL whose parens don't balance still doesn't match, and that is the intended fallback: literal Markdown is readable, a mangled link is not.
+
 `listItemRegex` uses `[ \t]` rather than `\s` for the same reason `preservedRegex` is narrow: `\s` swallows the preceding newline, so a list item at the start of a segment consumed the line break separating it from the previous line. That only surfaced once `formatMarkdown` began converting segments instead of the whole message.
 
 ### HTTP
@@ -90,9 +94,11 @@ The sibling repo `ap-mcp-slack` reached the opposite default for the same reason
 ### Slack package internals
 
 - `notifier.go` — the unexported `notifier` holds the requester and the webhook URL, nothing else. `NewNotifier` holds the disabled-vs-error policy above; `Notify` implements `notify.Notifier`. An empty `Message.Title` is an error, not a cue to guess: deriving a heading from the body's first line was a feature nothing used, and `Pipeline.send` already rejects an empty title, so the library said no through two separate paths.
-- `blocks.go` — Markdown→mrkdwn conversion, escaping, Block Kit assembly, and section truncation at `maxSectionLength` (2900 runes, under Slack's 3000 limit).
+- `blocks.go` — Markdown→mrkdwn conversion, escaping, Block Kit assembly, and truncation of both blocks: the body at `maxSectionLength` (2900, under Slack's 3000 limit) and the heading at `maxHeaderLength` (150, which *is* Slack's limit). The heading limit is not cosmetic — exceeding it returns `invalid_blocks` and loses the whole notification, so every release before this one could drop a message outright for a long title. `TestNotifyTruncatesLongTitle` pins it.
 
-Truncation is rune-based (`utf8.RuneCountInString` / `go-utils/text.Truncate`), never byte-based — messages are Japanese.
+Truncation measures in runes (`utf8.RuneCountInString`) but cuts in grapheme clusters (`go-utils/text.Truncate`), never in bytes. The cut has to be cluster-based or a combining mark or ZWJ emoji gets split; the guard can stay rune-based because cluster count never exceeds rune count, so it never misses a message that needs shortening.
+
+`truncateSectionText` closes an unterminated fence afterwards. `Body.Block` is the method that carries long content, so it is the one truncation lands inside, and a fence left open breaks the rest of the rendering.
 
 Config comes from the environment at the call site, never inside the package. `SLACK_WEBHOOK_URL` is the whole of it.
 

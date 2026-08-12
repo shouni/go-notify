@@ -1,6 +1,9 @@
 package slack
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestFormatMarkdownConversions は Markdown → mrkdwn の基本変換を検証します。
 func TestFormatMarkdownConversions(t *testing.T) {
@@ -28,6 +31,16 @@ func TestFormatMarkdownConversions(t *testing.T) {
 			name: "リンクは <URL|表示テキスト> になる",
 			in:   "[job-1](https://example.com/h/1)",
 			want: "<https://example.com/h/1|job-1>",
+		},
+		{
+			name: "URL に含まれる対応の取れた括弧はリンクの一部として扱う",
+			in:   "[詳細](https://example.com/a_(b)_c)",
+			want: "<https://example.com/a_(b)_c|詳細>",
+		},
+		{
+			name: "対応の取れない括弧を含む URL は Markdown のまま残す",
+			in:   "[詳細](https://example.com/a_(b_c)",
+			want: "[詳細](https://example.com/a_(b_c)",
 		},
 		{
 			name: "既に mrkdwn のリンクはそのまま通る",
@@ -197,5 +210,40 @@ func TestTruncateSectionText(t *testing.T) {
 	got := truncateSectionText(string(long))
 	if gotLen := len([]rune(got)); gotLen > maxSectionLength {
 		t.Errorf("切り詰め後の文字数 = %d, want <= %d", gotLen, maxSectionLength)
+	}
+}
+
+// TestTruncateSectionTextClosesCodeFence は、コードブロックの内側で切り詰めが
+// 起きた場合に閉じフェンスが補われることを検証します。
+// 長い出力を貼る Body.Block が最も切り詰めに当たりやすい経路です。
+func TestTruncateSectionTextClosesCodeFence(t *testing.T) {
+	long := codeFence + "\n" + strings.Repeat("x", maxSectionLength+100)
+
+	got := truncateSectionText(long)
+	if count := strings.Count(got, codeFence); count%2 != 0 {
+		t.Errorf("フェンスの数 = %d, want 偶数 (本文 = %q)", count, got[len(got)-40:])
+	}
+	if !strings.HasSuffix(got, codeFence) {
+		t.Errorf("末尾が閉じフェンスではありません: %q", got[len(got)-40:])
+	}
+}
+
+// TestTruncateHeaderText は上限を超える見出しが切り詰められることを検証します。
+//
+// 上限を超えたまま送ると Slack が invalid_blocks を返し、通知が丸ごと失われます。
+func TestTruncateHeaderText(t *testing.T) {
+	long := strings.Repeat("あ", maxHeaderLength+50)
+
+	got := truncateHeaderText(long)
+	if gotLen := len([]rune(got)); gotLen > maxHeaderLength {
+		t.Errorf("切り詰め後の文字数 = %d, want <= %d", gotLen, maxHeaderLength)
+	}
+	if !strings.HasSuffix(got, headerTruncationSuffix) {
+		t.Errorf("切り詰めのサフィックスが付いていません: %q", got)
+	}
+
+	short := "✅ 完了しました"
+	if got := truncateHeaderText(short); got != short {
+		t.Errorf("truncateHeaderText() = %q, want %q", got, short)
 	}
 }

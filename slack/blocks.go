@@ -18,10 +18,17 @@ import (
 )
 
 const (
+	// maxHeaderLength は Slack ヘッダーブロックの最大文字数です。Slack の上限そのものです。
+	maxHeaderLength = 150
 	// maxSectionLength は Slack セクションブロックの最大文字数です。
+	// Slack の上限 3000 の手前に余裕を取っています。
 	maxSectionLength = 2900
-	// truncationSuffix はメッセージ切り捨て時に追加するサフィックスです。
+	// headerTruncationSuffix は見出し切り捨て時に追加するサフィックスです。
+	headerTruncationSuffix = "…"
+	// truncationSuffix は本文切り捨て時に追加するサフィックスです。
 	truncationSuffix = "\n\n... (メッセージが長すぎるため省略されました)"
+	// codeFence は本文中のコードブロックのフェンスです。
+	codeFence = "```"
 )
 
 var (
@@ -34,13 +41,17 @@ var (
 	// 直前の行との改行ごと箇条書きに置き換えてしまうため）。
 	listItemRegex = regexp.MustCompile(`(?m)^[ \t]*-[ \t]+`) // - item -> • item
 	// linkRegex は Markdown のリンクを Slack mrkdwn のリンクに変換します。
-	// 表示テキストに ] を、URL に ) を含むリンクは対象外です（Slack 側で
-	// エスケープできないため、変換しても壊れたリンクにしかなりません）。
-	linkRegex = regexp.MustCompile(`\[([^\]]*)\]\(([^)\s]+)\)`) // [text](url) -> <url|text>
-	// fencedBlockRegex は行頭の ``` で開き、行頭の ``` で閉じるコードブロックにマッチします。
+	//
+	// URL 側は括弧の対応が取れていれば 1 段まで含められます。閉じ括弧を
+	// 「最初に見つかった )」で決めると、a_(b)_c のような URL が途中で切れ、
+	// 表示テキストと混ざった壊れたリンクになります。
+	// 対応の取れない括弧を含む URL と、表示テキストに ] を含むリンクは
+	// マッチせず、Markdown のまま出ます（壊れたリンクにするより literal のほうが読めるため）。
+	linkRegex = regexp.MustCompile(`\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))+)\)`) // [text](url) -> <url|text>
+	// fencedBlockRegex は行頭のフェンスで開き、行頭のフェンスで閉じるコードブロックにマッチします。
 	// 閉じフェンスが無い場合はマッチせず、通常のテキストとして変換されます
 	// （壊れたフェンスに引きずられて以降の本文すべてが変換対象外になるのを避けるため）。
-	fencedBlockRegex = regexp.MustCompile("(?ms)^```[^\n]*\n.*?^```[ \t]*$")
+	fencedBlockRegex = regexp.MustCompile("(?ms)^" + codeFence + "[^\n]*\n.*?^" + codeFence + "[ \t]*$")
 	// preservedRegex は、エスケープしてはいけない部分にマッチします。
 	//
 	// 対象は Slack が構文として解釈する <...>、すなわちスキーム付きリンク
@@ -58,14 +69,15 @@ var (
 var mrkdwnEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
 
 // buildMessageBlocks は Slack の Block Kit ブロックを構築します。
+// 見出しと本文はそれぞれのブロックの上限に収まるよう切り詰めます。
 func buildMessageBlocks(headerText string, message string) ([]slack.Block, error) {
 	if headerText == "" {
-		return nil, errors.New("headerText は必須です")
+		return nil, errors.New("通知の見出しが空です")
 	}
 
 	blocks := []slack.Block{
 		slack.NewHeaderBlock(
-			slack.NewTextBlockObject("plain_text", headerText, true, false),
+			slack.NewTextBlockObject("plain_text", truncateHeaderText(headerText), true, false),
 		),
 		slack.NewDividerBlock(),
 	}
@@ -93,15 +105,14 @@ func buildSectionText(message string) string {
 
 // formatMarkdown は一般的な Markdown 記法の一部を Slack mrkdwn に変換します。
 //
-// コードブロックの中身は記法変換の対象外です。コードブロックはエラー出力や
-// コマンドのログを原文のまま見せるためのものなので、そこで - を • に、
-// **text** を *text* に書き換えると、貼った本人が見たいはずの原文が壊れます。
-// エスケープだけはブロック内でも必要なため、変換と分けて適用します。
-// ブロック内は escapeMrkdwn ではなく無条件のエスケープを使います。原文をそのまま
-// 見せるのが目的である以上、たまたま <https://…> の形をした文字列もリンク構文では
-// なくただの文字列として扱うべきだからです。
+// コードブロックの中身は記法変換の対象外です。原文をそのまま見せるための
+// ブロックで - を • に、**text** を *text* に書き換えては、貼った本人が
+// 見たいはずの原文が壊れます。
 //
-// 行頭の > による引用記法は使えません（エスケープ対象の文字と区別できないため）。
+// エスケープだけはブロック内でも必要なので、変換と分けて適用します。
+// ブロック内で escapeMrkdwn ではなく無条件のエスケープを使うのは同じ理由です。
+// 原文を見せるのが目的である以上、たまたま <https://…> の形をした文字列は
+// リンク構文ではなくただの文字列として扱うべきだからです。
 func formatMarkdown(message string) string {
 	var sb strings.Builder
 	last := 0
@@ -132,6 +143,9 @@ func convertMarkdown(segment string) string {
 
 // escapeMrkdwn は、プレーンテキスト中の Slack 制御文字を実体参照へ変換します。
 // リンク・メンションの構文と既存の実体参照はそのまま残します。
+//
+// > がここでエスケープされるため、行頭の > による引用記法は使えません
+// （引用の > とエスケープが必要な > を区別できないためです）。
 func escapeMrkdwn(message string) string {
 	var sb strings.Builder
 	last := 0
@@ -146,6 +160,22 @@ func escapeMrkdwn(message string) string {
 	return sb.String()
 }
 
+// truncateHeaderText は見出しを Slack ヘッダーブロックの上限に収めます。
+//
+// 上限を超えたまま送ると Slack は invalid_blocks を返し、通知が丸ごと届きません。
+// 見出しの末尾が読めることより通知そのものが届くことが重要なので、切り詰めます。
+func truncateHeaderText(headerText string) string {
+	textLen := utf8.RuneCountInString(headerText)
+	if textLen <= maxHeaderLength {
+		return headerText
+	}
+
+	slog.Warn("The notification title is too long, truncating.",
+		"current_runes", textLen,
+		"max_runes", maxHeaderLength)
+	return truncateWithSuffix(headerText, maxHeaderLength, headerTruncationSuffix)
+}
+
 // truncateSectionText は Slack セクションブロックの上限に収まるよう本文を短縮します。
 func truncateSectionText(message string) string {
 	textLen := utf8.RuneCountInString(message)
@@ -156,21 +186,31 @@ func truncateSectionText(message string) string {
 	slog.Warn("The notification message is too long, truncating.",
 		"current_runes", textLen,
 		"max_runes", maxSectionLength)
-	return truncateWithSuffixLimit(message, maxSectionLength, truncationSuffix)
+	return closeUnterminatedFence(truncateWithSuffix(message, maxSectionLength, truncationSuffix))
 }
 
-// truncateWithSuffixLimit は文字列を指定文字数以内に収め、必要に応じてサフィックスを付与します。
-// 切り詰めはルーン単位です（メッセージが日本語なのでバイト単位では文字が壊れます）。
-func truncateWithSuffixLimit(s string, maxLen int, suffix string) string {
-	suffixLen := utf8.RuneCountInString(suffix)
-	if utf8.RuneCountInString(s) <= maxLen {
-		return s
-	}
-	if maxLen <= suffixLen {
-		return text.Truncate(s, maxLen, "")
+// truncateWithSuffix は s を maxLen 文字以内に収め、末尾に suffix を付けます。
+// 呼び出し側が上限超過を判定済みであることを前提にします。
+//
+// 上限の判定はルーン数ですが、切り詰めそのものは書記素クラスタ単位です
+// （text.Truncate の仕様）。ルーンで切ると濁点や ZWJ 絵文字が分断されるため
+// 切る側はクラスタ単位でなければならず、一方クラスタ数はルーン数以下なので、
+// ルーンでの判定は「短縮が必要な場合」を取りこぼしません。
+func truncateWithSuffix(s string, maxLen int, suffix string) string {
+	return text.Truncate(s, maxLen-utf8.RuneCountInString(suffix), suffix)
+}
+
+// closeUnterminatedFence は、切り詰めでコードブロックの途中が切れた場合に閉じフェンスを補います。
+//
+// 長い出力を貼るための Body.Block が最も切り詰めに当たりやすく、そこで切ると
+// 閉じフェンスごと落ちて開いたままの mrkdwn になります。以降の描画が崩れるため、
+// 切った側で閉じます。
+func closeUnterminatedFence(message string) string {
+	if strings.Count(message, codeFence)%2 == 0 {
+		return message
 	}
 
-	return text.Truncate(s, maxLen-suffixLen, suffix)
+	return message + "\n" + codeFence
 }
 
 // buildFooterBlock は送信時刻を表示する Slack コンテキストブロックを構築します。

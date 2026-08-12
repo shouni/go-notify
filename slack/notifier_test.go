@@ -49,6 +49,18 @@ func (s *stubRequester) blockSet(t *testing.T) []slackgo.Block {
 	return nil
 }
 
+// headerText は送信済みメッセージのヘッダーブロックの文字列を返します。
+func (s *stubRequester) headerText(t *testing.T) string {
+	t.Helper()
+	for _, b := range s.blockSet(t) {
+		if header, ok := b.(*slackgo.HeaderBlock); ok && header.Text != nil {
+			return header.Text.Text
+		}
+	}
+	t.Fatal("ヘッダーブロックが見つかりません")
+	return ""
+}
+
 // sectionText は送信済みメッセージのセクションブロック本文を返します。
 func (s *stubRequester) sectionText(t *testing.T) string {
 	t.Helper()
@@ -122,6 +134,28 @@ func TestNotifyUsesTitleAsHeader(t *testing.T) {
 	}
 	if stub.sent.Text != "✅ 完了しました" {
 		t.Errorf("Text = %q, want %q", stub.sent.Text, "✅ 完了しました")
+	}
+}
+
+// TestNotifyTruncatesLongTitle は、長すぎる見出しがヘッダーブロックの上限に
+// 収まることを検証します。
+//
+// Slack のヘッダーブロックは 150 文字までで、超えたまま送ると invalid_blocks が
+// 返り通知が丸ごと失われます。本文だけでなく見出しも守る必要があります。
+func TestNotifyTruncatesLongTitle(t *testing.T) {
+	stub := &stubRequester{}
+	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
+	if err != nil {
+		t.Fatalf("NewNotifier() = %v, want nil", err)
+	}
+
+	title := strings.Repeat("あ", 200)
+	if err := n.Notify(context.Background(), notify.Message{Title: title, Body: "本文"}); err != nil {
+		t.Fatalf("Notify() = %v, want nil", err)
+	}
+
+	if got := len([]rune(stub.headerText(t))); got > 150 {
+		t.Errorf("ヘッダーの文字数 = %d, want <= 150", got)
 	}
 }
 
@@ -268,6 +302,37 @@ func TestNotifyRendersBodyAsMrkdwn(t *testing.T) {
 	want := "*Command:* `run_task`\n" +
 		"*Title:* サンプルタイトル\n" +
 		"*History Detail:* <https://example.com/web/history/job-1|job-1>"
+	if got := stub.sectionText(t); got != want {
+		t.Errorf("セクション本文 =\n%q\nwant\n%q", got, want)
+	}
+}
+
+// TestNotifyRendersHeadingAndBulletAsMrkdwn は、Heading と Bullet が
+// Slack の記法に変換されることを検証します。
+//
+// 呼び出し側が "## " や "- " を手書きしなくても済むことが両メソッドの目的なので、
+// Body の出力が実際に変換される経路をここで固定します。
+func TestNotifyRendersHeadingAndBulletAsMrkdwn(t *testing.T) {
+	stub := &stubRequester{}
+	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
+	if err != nil {
+		t.Fatalf("NewNotifier() = %v, want nil", err)
+	}
+
+	body := notify.NewBody().
+		Field("Title", "サンプル").
+		Heading("生成結果").
+		Bullet("scene_01.png").
+		Bullet("scene_02.png")
+
+	if err := n.Notify(context.Background(), notify.Message{Title: "✅ 完了", Body: body.String()}); err != nil {
+		t.Fatalf("Notify() = %v, want nil", err)
+	}
+
+	want := "*Title:* サンプル\n\n" +
+		"*生成結果*\n" +
+		"• scene_01.png\n" +
+		"• scene_02.png"
 	if got := stub.sectionText(t); got != want {
 		t.Errorf("セクション本文 =\n%q\nwant\n%q", got, want)
 	}

@@ -40,6 +40,30 @@ func TestBodyWriters(t *testing.T) {
 			want:  "そのままの行",
 		},
 		{
+			name:  "Heading は小見出しにする",
+			build: func(b *notify.Body) { b.Heading("生成結果") },
+			want:  "## 生成結果",
+		},
+		{
+			name:  "Bullet は箇条書きにする",
+			build: func(b *notify.Body) { b.Bullet("scene_01.png") },
+			want:  "- scene_01.png",
+		},
+		{
+			name: "Bullet は連続して並べられる",
+			build: func(b *notify.Body) {
+				b.Bullet("scene_01.png").Bullet("scene_02.png")
+			},
+			want: "- scene_01.png\n- scene_02.png",
+		},
+		{
+			name: "Heading は既存の本文と1行空ける",
+			build: func(b *notify.Body) {
+				b.Field("Title", "サンプル").Heading("生成結果").Bullet("scene_01.png")
+			},
+			want: "**Title:** サンプル\n\n## 生成結果\n- scene_01.png",
+		},
+		{
 			name: "複数行は改行で連結される",
 			build: func(b *notify.Body) {
 				b.Code("Command", "run_task").Field("Title", "サンプルタイトル")
@@ -67,6 +91,8 @@ func TestBodySkipsEmptyValues(t *testing.T) {
 	b.Code("Command", "")
 	b.Link("History", "", "ラベルだけあってもURLが無い")
 	b.Text("")
+	b.Heading("")
+	b.Bullet("")
 
 	if !b.Empty() {
 		t.Fatalf("空の値だけを書き込んだのに Empty() = false, 本文 = %q", b.String())
