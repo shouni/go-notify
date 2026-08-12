@@ -34,6 +34,31 @@ func (b *Body) Text(s string) *Body {
 	return b
 }
 
+// Heading は小見出しの 1 行を追記します。s が空の場合は何もしません。
+// 既に本文がある場合は 1 行空けてから追記します。
+//
+// 項目が多く、意味のまとまりで区切りたい本文のための入口です。
+func (b *Body) Heading(s string) *Body {
+	if s == "" {
+		return b
+	}
+	b.separate()
+	b.writeLine("## " + s)
+	return b
+}
+
+// Bullet は箇条書きの 1 行を追記します。s が空の場合は何もしません。
+//
+// ラベルの付かない値を並べるための入口です。件数が可変のもの
+// （処理したファイル名など）は Field を繰り返すより箇条書きが読みやすくなります。
+func (b *Body) Bullet(s string) *Body {
+	if s == "" {
+		return b
+	}
+	b.writeLine("- " + s)
+	return b
+}
+
 // Field は「**ラベル:** 値」の 1 行を追記します。値が空の場合は何もしません。
 func (b *Body) Field(label, value string) *Body {
 	if value == "" {
@@ -148,7 +173,7 @@ func (b *Body) separate() {
 // CodeSpan は s をコードスパン（Markdown のインラインコード）記法で包んだ文字列を返します。
 // s が空の場合は空文字を返すため、そのまま Field へ渡せば行ごと省かれます。
 //
-// Body のメソッドは「ラベル + 単一の値」しか組み立てられないため、単位や絵文字を
+// Code は「ラベル + 単一の値」しか組み立てられないため、単位や絵文字を
 // 添えたい呼び出し側がバックティックを直書きしがちです。しかし本文の Markdown 記法を
 // 知るのは本パッケージだけ、というのがチャネル非依存を成り立たせている境界なので、
 // 記法を書く必要がある場合の出口をここに用意します。
