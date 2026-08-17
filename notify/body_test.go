@@ -40,6 +40,26 @@ func TestBodyWriters(t *testing.T) {
 			want:  "そのままの行",
 		},
 		{
+			name:  "URIField は gs:// オブジェクトを Console 詳細ページへのリンクにする",
+			build: func(b *notify.Body) { b.URIField("Output", "gs://bucket/job/audio.wav") },
+			want:  "**Output:** [gs://bucket/job/audio.wav](https://console.cloud.google.com/storage/browser/_details/bucket/job/audio.wav)",
+		},
+		{
+			name:  "URIField は末尾スラッシュの gs:// をバケットブラウザへのリンクにする",
+			build: func(b *notify.Body) { b.URIField("出力先", "gs://bucket/job/") },
+			want:  "**出力先:** [gs://bucket/job/](https://console.cloud.google.com/storage/browser/bucket/job/)",
+		},
+		{
+			name:  "URIField は gs:// 以外を素の値として並べる",
+			build: func(b *notify.Body) { b.URIField("Source", "https://example.com/article") },
+			want:  "**Source:** https://example.com/article",
+		},
+		{
+			name:  "URIField は前後の空白を除いてから判定する",
+			build: func(b *notify.Body) { b.URIField("Output", "  gs://bucket/obj  ") },
+			want:  "**Output:** [gs://bucket/obj](https://console.cloud.google.com/storage/browser/_details/bucket/obj)",
+		},
+		{
 			name:  "Heading は小見出しにする",
 			build: func(b *notify.Body) { b.Heading("生成結果") },
 			want:  "## 生成結果",
@@ -90,6 +110,7 @@ func TestBodySkipsEmptyValues(t *testing.T) {
 	b.Field("Title", "")
 	b.Code("Command", "")
 	b.Link("History", "", "ラベルだけあってもURLが無い")
+	b.URIField("Output", "   ")
 	b.Text("")
 	b.Heading("")
 	b.Bullet("")

@@ -113,6 +113,7 @@ pipeline.WithTitles(notify.Titles{Success: titleFor(cmd)}).Success(ctx, body)
 | `Code("Command", "run_task")` | ``**Command:** `run_task` `` |
 | `Link("Detail", url, "job-1")` | `**Detail:** [job-1](url)` |
 | `LinkOrField("Out", url, uri)` | url があれば `Link`、無ければ `Field` と同じ |
+| `URIField("Out", "gs://b/o")` | gs:// は Cloud Console へのリンク（表示は gs:// のまま）、それ以外は `Field` と同じ |
 | `Text("素の行")` | `素の行` |
 | `Heading("生成結果")` | `## 生成結果` |
 | `Bullet("scene_01.png")` | `- scene_01.png` |

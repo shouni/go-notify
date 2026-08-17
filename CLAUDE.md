@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Go Notify is a **library, not a CLI** — it has no `main`, no `cmd/`, and no cobra dependency. It is the extraction of `go-notifier/pkg/slack` plus a new channel-agnostic layer on top. The sibling repo `go-notifier` (Slack + Backlog + CLI) is being retired in its favour; nothing here should grow a command-line surface.
+Go Notify is a **library, not a CLI** — it has no `main`, no `cmd/`, and no cobra dependency. It is the extraction of the retired sibling repo `go-notifier`'s `pkg/slack` (Slack + Backlog + CLI, now deleted) plus a new channel-agnostic layer on top; nothing here should grow a command-line surface.
 
-Six services consume it (`ap-chain`, `ap-comic`, `ap-comp`, `ap-mv`, `ap-voice`, `git-gemini-web`), each of which previously hand-rolled its own `internal/adapters/slack.go`. The `notify` package exists to absorb what those six duplicated.
+Five services consume it today (`ap-comp`, `ap-mv`, `ap-story`, `ap-voice`, `git-gemini-web`), each of which previously hand-rolled its own `internal/adapters/slack.go`. The `notify` package exists to absorb what those services duplicate — check the sibling `go.mod`s before trusting this list, it drifts (`ap-chain` and `ap-comic` have since dropped the dependency, `ap-story` joined).
 
 ## Commands
 
@@ -44,6 +44,8 @@ Both packages live in subdirectories; nothing sits at the module root. That matc
 `Body` methods skip empty values, which is what removes the per-field `if value != ""` blocks the six services all carried. `String()` on a Body that was never written to returns `NotAvailable` (`"N/A"`) rather than an empty string — an empty notification is never the intent, and Slack's section block rejects empty text.
 
 `notify.CodeSpan` is the deliberate escape hatch from that seam. `Code` only builds "label + one value", so callers wanting a unit, an emoji, or two monospaced values on one line were writing backticks inline (`fmt.Sprintf("`%d` 🎲", seed)` in `ap-comp`, `fmt.Sprintf("`%s` ← `%s`", base, feature)` in `git-gemini-web`) — which is the invariant above starting to leak into consumers. `CodeSpan` gives them the markup without letting them author it. If a new case can't be expressed with `CodeSpan` + `Field`, add a `Body` method rather than letting a call site write Markdown.
+
+`Body.URIField` absorbs the `writeURIField` + `gcsConsoleURL` pair that `ap-voice` and `ap-mv` carried as identical ~30-line copies (ap-voice's comment even said "ap-mv の writeURIField と同じ形です"): a `gs://` URI renders as a link to Cloud Console with the `gs://` string as display text — the URI stays copy-pasteable into `gcloud storage`, and `gs://` is a dead string in every channel anyway — while any other value falls through to `Field`. GCS-awareness in a channel-agnostic package is deliberate: the boundary here is about output *markup* (Markdown vs mrkdwn), not content sources, and this fleet stores artifacts in GCS only.
 
 `Body.Heading` and `Body.Bullet` exist for the same reason. `slack/blocks.go` converts `## ` and `- ` (`headerRegex`, `listItemRegex`), but for a while no `Body` method emitted either, so a caller wanting a sub-heading or a variable-length list had to hand-write the markup through `Text` — the same leak `CodeSpan` was added to plug. `TestNotifyRendersHeadingAndBulletAsMrkdwn` pins the pair to the conversion.
 
