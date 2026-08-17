@@ -84,6 +84,13 @@ notifier, err := slack.NewNotifier(httpClient.WithoutRetry(), webhookURL)
 
 ---
 
+## 🕒 フッター
+
+すべての通知の末尾に、送信時刻（JST）を表示するコンテキストブロックが自動で付きます。
+呼び出し側で時刻を本文へ入れる必要はありません。
+
+---
+
 ## 📏 制限
 
 * **見出しは必須**です。`Message.Title` が空の場合はエラーを返します。

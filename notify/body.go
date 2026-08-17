@@ -106,6 +106,36 @@ func (b *Body) LinkOrField(label, url, text string) *Body {
 	return b.Link(label, url, text)
 }
 
+// URIField は、ストレージ URI の 1 行を追記します。uri が空白のみの場合は何もしません。
+//
+// gs:// の URI は Cloud Console へのリンクにし、表示は gs:// のまま残します。
+// gs:// はどのチャネルでもただの文字列で、クリックしても何も起きません。一方で
+// 表示まで Console の URL にすると、コピーして gcloud storage 等へそのまま渡せなく
+// なります。gs:// 以外（http(s) の入力ソースなど）は素の値として並びます。
+//
+// 成果物や入力の URI を並べる呼び出し側が、毎回同じ変換と分岐を書くのを避けます。
+func (b *Body) URIField(label, uri string) *Body {
+	uri = strings.TrimSpace(uri)
+	return b.LinkOrField(label, gcsConsoleURL(uri), uri)
+}
+
+// gcsConsoleURL は gs:// URI に対応する Cloud Console の URL を返します。
+// gs:// 以外（http(s) や空文字）の場合は空文字を返します。
+//
+// 末尾がスラッシュのものはディレクトリ扱いでバケットブラウザへ、
+// 単体オブジェクトは詳細ページへ飛ばします。
+func gcsConsoleURL(uri string) string {
+	objectPath, ok := strings.CutPrefix(uri, "gs://")
+	if !ok || objectPath == "" {
+		return ""
+	}
+
+	if strings.HasSuffix(objectPath, "/") {
+		return "https://console.cloud.google.com/storage/browser/" + objectPath
+	}
+	return "https://console.cloud.google.com/storage/browser/_details/" + objectPath
+}
+
 // Error は「**ラベル:**」に続けてエラー内容を追記します。
 // err が nil の場合は NotAvailable を表示します。
 // 既に本文がある場合は 1 行空けてから追記します。
