@@ -13,7 +13,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/shouni/go-utils/jst"
-	"github.com/shouni/go-utils/text"
 	"github.com/slack-go/slack"
 )
 
@@ -28,6 +27,7 @@ const (
 	// truncationSuffix は本文切り捨て時に追加するサフィックスです。
 	truncationSuffix = "\n\n... (メッセージが長すぎるため省略されました)"
 	// codeFence は本文中のコードブロックのフェンスです。
+	// notify.Body が出力する並びと一致している必要があります（片方だけ変えると検出が外れます）。
 	codeFence = "```"
 )
 
@@ -192,12 +192,10 @@ func truncateSectionText(message string) string {
 // truncateWithSuffix は s を maxLen 文字以内に収め、末尾に suffix を付けます。
 // 呼び出し側が上限超過を判定済みであることを前提にします。
 //
-// 上限の判定はルーン数ですが、切り詰めそのものは書記素クラスタ単位です
-// （text.Truncate の仕様）。ルーンで切ると濁点や ZWJ 絵文字が分断されるため
-// 切る側はクラスタ単位でなければならず、一方クラスタ数はルーン数以下なので、
-// ルーンでの判定は「短縮が必要な場合」を取りこぼしません。
+// 上限の判定はルーン数ですが、切り詰めは書記素クラスタ単位です（理由は truncateGraphemes）。
+// クラスタ数はルーン数以下なので、ルーンでの判定が「短縮が必要な場合」を取りこぼすことはありません。
 func truncateWithSuffix(s string, maxLen int, suffix string) string {
-	return text.Truncate(s, maxLen-utf8.RuneCountInString(suffix), suffix)
+	return truncateGraphemes(s, maxLen-utf8.RuneCountInString(suffix), suffix)
 }
 
 // closeUnterminatedFence は、切り詰めでコードブロックの途中が切れた場合に閉じフェンスを補います。
