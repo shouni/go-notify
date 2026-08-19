@@ -33,15 +33,11 @@ Slack 固有の話（記法の変換・リトライ・制限）は [docs/slack.m
   渡されたクライアントのものをそのまま使い、本パッケージ自身は
   リトライも `http.Client` も持ちません。
 
----
-
 ## 📦 インストール
 
 ```bash
 go get github.com/shouni/go-notify
 ```
-
----
 
 ## 🔧 使い方
 
@@ -126,8 +122,7 @@ pipeline.WithTitles(notify.Titles{Success: titleFor(cmd)}).Success(ctx, body)
 
 件数が可変の値を並べるときは `Field` を繰り返すより `Bullet`、
 項目が多くて意味のまとまりで区切りたいときは `Heading` を使います。
-`- ` や `## ` を `Text` に手書きする必要はありません
-（記法を知る場所を `notify` パッケージに留めるためです）。
+`- ` や `## ` を `Text` に手書きする必要はありません。
 
 `Block` の中身は各チャネルの記法変換の対象外で、`- ` や `**` は書き換わりません
 （詳細は [docs/slack.md](docs/slack.md)）。
@@ -137,7 +132,7 @@ pipeline.WithTitles(notify.Titles{Success: titleFor(cmd)}).Success(ctx, body)
 `Code` は「ラベル + 単一の値」しか作れません。単位や絵文字を添えたい、
 1 行に複数のコードスパンを並べたい場合は `CodeSpan` を使います。
 
-本文の Markdown 記法を知る場所を `notify` パッケージの中に留めるための出口です。
+Markdown 記法を知る場所を `notify` パッケージに留めるための出口なので、
 呼び出し側でバックティックを直接書かないでください。
 
 ```go
