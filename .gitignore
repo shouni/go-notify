@@ -30,3 +30,6 @@ cover.out
 
 # Local development
 /vendor/
+
+# Claude Code local settings
+.claude/settings.local.json
