@@ -13,7 +13,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/shouni/go-utils/jst"
-	"github.com/shouni/go-utils/text"
 	"github.com/slack-go/slack"
 )
 
@@ -193,11 +192,11 @@ func truncateSectionText(message string) string {
 // 呼び出し側が上限超過を判定済みであることを前提にします。
 //
 // 上限の判定はルーン数ですが、切り詰めそのものは書記素クラスタ単位です
-// （text.Truncate の仕様）。ルーンで切ると濁点や ZWJ 絵文字が分断されるため
+// （truncateGraphemes の仕様）。ルーンで切ると濁点や ZWJ 絵文字が分断されるため
 // 切る側はクラスタ単位でなければならず、一方クラスタ数はルーン数以下なので、
 // ルーンでの判定は「短縮が必要な場合」を取りこぼしません。
 func truncateWithSuffix(s string, maxLen int, suffix string) string {
-	return text.Truncate(s, maxLen-utf8.RuneCountInString(suffix), suffix)
+	return truncateGraphemes(s, maxLen-utf8.RuneCountInString(suffix), suffix)
 }
 
 // closeUnterminatedFence は、切り詰めでコードブロックの途中が切れた場合に閉じフェンスを補います。
