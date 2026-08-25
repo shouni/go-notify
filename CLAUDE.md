@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Go Notify is a **library, not a CLI** — it has no `main`, no `cmd/`, and no cobra dependency. It is the extraction of the retired sibling repo `go-notifier`'s `pkg/slack` (Slack + Backlog + CLI, now deleted) plus a new channel-agnostic layer on top; nothing here should grow a command-line surface.
 
-Five services consume it today (`ap-comp`, `ap-mv`, `ap-story`, `ap-voice`, `git-gemini-web`), each of which previously hand-rolled its own `internal/adapters/slack.go`. The `notify` package exists to absorb what those services duplicate — check the sibling `go.mod`s before trusting this list, it drifts (`ap-chain` and `ap-comic` have since dropped the dependency, `ap-story` joined).
+Five services consume it today (`ap-comp`, `ap-mv`, `ap-story`, `ap-voice`, `adk-review`), each of which previously hand-rolled its own `internal/adapters/slack.go`. The `notify` package exists to absorb what those services duplicate — check the sibling `go.mod`s before trusting this list, it drifts (`ap-chain`, `ap-comic` and `git-gemini-web` have since dropped the dependency; `ap-story` and `adk-review` joined).
 
 ## Commands
 
@@ -16,7 +16,7 @@ go vet ./...
 gofmt -l .                        # must print nothing; `gofmt -w .` to fix
 go test -race ./...               # full suite
 go test -race ./slack/... -run TestName   # single test
-golangci-lint run                 # v2.12.2, config in .golangci.yml
+golangci-lint run                 # v2.13.1, config in .golangci.yml
 govulncheck ./...
 ```
 
@@ -43,9 +43,11 @@ Both packages live in subdirectories; nothing sits at the module root. That matc
 
 `Body` methods skip empty values, which is what removes the per-field `if value != ""` blocks the six services all carried. `String()` on a Body that was never written to returns `NotAvailable` (`"N/A"`) rather than an empty string — an empty notification is never the intent, and Slack's section block rejects empty text.
 
-`notify.CodeSpan` is the deliberate escape hatch from that seam. `Code` only builds "label + one value", so callers wanting a unit, an emoji, or two monospaced values on one line were writing backticks inline (`fmt.Sprintf("`%d` 🎲", seed)` in `ap-comp`, `fmt.Sprintf("`%s` ← `%s`", base, feature)` in `git-gemini-web`) — which is the invariant above starting to leak into consumers. `CodeSpan` gives them the markup without letting them author it. If a new case can't be expressed with `CodeSpan` + `Field`, add a `Body` method rather than letting a call site write Markdown.
+`notify.CodeSpan` is the deliberate escape hatch from that seam. `Code` only builds "label + one value", so callers wanting a unit, an emoji, or two monospaced values on one line were writing backticks inline (`fmt.Sprintf("`%d` 🎲", seed)` in `ap-comp`, `fmt.Sprintf("`%s` ← `%s`", base, feature)` in `adk-review`) — which is the invariant above starting to leak into consumers. `CodeSpan` gives them the markup without letting them author it. If a new case can't be expressed with `CodeSpan` + `Field`, add a `Body` method rather than letting a call site write Markdown.
 
 `Body.URIField` absorbs the `writeURIField` + `gcsConsoleURL` pair that `ap-voice` and `ap-mv` carried as identical ~30-line copies (ap-voice's comment even said "ap-mv の writeURIField と同じ形です"): a `gs://` URI renders as a link to Cloud Console with the `gs://` string as display text — the URI stays copy-pasteable into `gcloud storage`, and `gs://` is a dead string in every channel anyway — while any other value falls through to `Field`. GCS-awareness in a channel-agnostic package is deliberate: the boundary here is about output *markup* (Markdown vs mrkdwn), not content sources, and this fleet stores artifacts in GCS only.
+
+`notify.JoinURL` is there for a different flavour of the same duplication. Four of the five consumers carried six near-identical private functions — `ap-comp.detailPageURL`, `ap-mv.draftsURL`, `ap-mv.historyDetailURL`, `ap-story.resultPageURL` (twice), `ap-voice.detailURL` — all shaped "if the base URL or the ID is empty return `""`, join, and return `""` if the join fails". They converge on that shape because `Body.Link` skips a row whose URL is empty, and that contract belongs to this package; the URL assembly that satisfies it therefore belongs here too. It returns a string rather than `(string, error)` for the same reason: an error would just be turned back into `""` by every caller.
 
 `Body.Heading` and `Body.Bullet` exist for the same reason. `slack/blocks.go` converts `## ` and `- ` (`headerRegex`, `listItemRegex`), but for a while no `Body` method emitted either, so a caller wanting a sub-heading or a variable-length list had to hand-write the markup through `Text` — the same leak `CodeSpan` was added to plug. `TestNotifyRendersHeadingAndBulletAsMrkdwn` pins the pair to the conversion.
 
@@ -57,6 +59,8 @@ Both packages live in subdirectories; nothing sits at the module root. That matc
 
 `notify.Enabled(n)` reports whether a notifier actually sends, so callers can skip expensive body construction. `Pipeline.Enabled()` forwards it.
 
+`Pipeline.Failure` and `Pipeline.Skipped` append their trailing section to a *copy* of the caller's `Body` (`pipeline.go: derive`, `body.go: clone`). They used to write straight into the caller's `Body`, and a test pinned that as intended — but the API hands the same `*Body` back for the next outcome, so reuse is the shape it invites, and reusing one produced a skipped notification carrying the previous failure's "エラー内容". The README's own `Success` → `Failure` → `Skipped` example demonstrated it. `clone` copies the raw builder, not `String()`: `String()` trims the trailing newline, and `separate()` reads that newline to decide whether to insert a blank line, so a round-trip through `String()` silently loses the blank line before the appended section. `TestPipelineBodyReuseAcrossOutcomes` pins all three outcomes.
+
 `Pipeline.WithTitles` returns a copy with different headings and exists because `ap-comic` needs a per-command title and, without it, dropped out of `Pipeline` entirely — re-declaring `errorLabel`, calling `notify.Enabled` by hand, and open-coding `Notify` plus its error wrapping in two places. Titles are replaced, not merged: each call site fills in only the outcome it is about to send.
 
 ### Level
@@ -65,6 +69,8 @@ Both packages live in subdirectories; nothing sits at the module root. That matc
 
 `Pipeline` sets it; callers never pass it. Letting a caller supply both a heading and a level only creates room for the two to disagree. `LevelNone` is the zero value, so a `Message` built by hand keeps its current behaviour, and `slack` renders it exactly as before.
 
+Both places that enumerate `Level` are exhaustive on purpose and the `exhaustive` linter (`check: [switch, map]`) holds them that way. `Level.String()` lists `LevelNone` explicitly instead of folding it into `default`, and `slack.levelColors` carries `LevelNone: ""` instead of omitting the key. The map is the reason the linter is configured for maps at all: a missing key returns the zero value, so a new level added without a colour would post silently uncoloured rather than fail to compile. Adding a level now fails lint in both packages until it is handled.
+
 Rendering is the channel's call. `slack` maps the three levels to `good` / `danger` / `warning` and wraps the blocks in a coloured attachment; `LevelNone` stays as top-level blocks, because an attachment indents the body and there is no reason to change how existing, level-less notifications look.
 
 The two branches set the fallback text differently, and this is not cosmetic. With top-level `blocks`, Slack treats `WebhookMessage.Text` as fallback only and does not render it. Move the blocks into an attachment and `Text` becomes actual message body, so leaving the title there prints it twice — once as text, once in the attachment's header block. The coloured branch therefore leaves `Text` empty and puts the title in `Attachment.Fallback`, which keeps push-notification wording intact. `TestNotifyLevelDoesNotDuplicateTitle` pins it; v1.2.0 and v1.2.1 shipped without it and duplicated every heading.
@@ -72,6 +78,8 @@ The two branches set the fallback text differently, and this is not cosmetic. Wi
 `NewNotifier` is the only exported constructor. A `NewClient` returning a concrete `*Client`, plus `SendText` / `SendTextWithHeader`, used to sit beneath it; all six consumers went through `NewNotifier` and none touched them, so they were removed rather than kept as a second way in.
 
 ### Slack escaping rules
+
+`formatMarkdown` and `escapeMrkdwn` are both one call to `replaceSegments`, which walks a regex's matches and applies one transform inside the matched spans and another outside. The two differ only in the regex and the pair of transforms; the traversal was duplicated verbatim before.
 
 `formatMarkdown` converts links **before** escaping, and this order is load-bearing. Slack requires `&`, `<`, `>` to be HTML-escaped **in plain message text only** — inside `<URL|text>` constructs and mentions they are already parsed as syntax. Escaping a GCS signed URL's `&` separators would rewrite the signature and produce a 403, so `preservedRegex` deliberately skips scheme-prefixed links (`<https://…>`, `<mailto:…>`) and mentions (`<@U…>`, `<#C…>`, `<!here>`).
 

@@ -188,6 +188,16 @@ func (b *Body) String() string {
 	return strings.TrimRight(b.sb.String(), "\n")
 }
 
+// clone は同じ内容を持つ別の Body を返します。
+//
+// 内部バッファをそのまま写します。String() の結果から組み直すと末尾の改行が
+// 落ち、続けて呼ぶ separate() が空行を入れられなくなるためです。
+func (b *Body) clone() *Body {
+	c := NewBody()
+	c.sb.WriteString(b.sb.String())
+	return c
+}
+
 // writeLine は 1 行を改行付きで書き込みます。
 func (b *Body) writeLine(s string) {
 	b.sb.WriteString(s)

@@ -6,6 +6,7 @@ run:
 linters:
   enable:
     - errcheck
+    - exhaustive
     - govet
     - ineffassign
     - staticcheck
@@ -16,6 +17,13 @@ linters:
     errcheck:
       exclude-functions:
         - (io.ReadCloser).Close
+    exhaustive:
+      # switch だけでなくマップリテラルも見ます。notify.Level を実際に扱い分けて
+      # いるのは slack の levelColors で、これはマップです。種別を足したときに
+      # 抜けても参照は空文字で素通りするため、拾えないと無色の通知になります。
+      check:
+        - switch
+        - map
 
 formatters:
   enable:

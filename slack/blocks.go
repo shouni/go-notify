@@ -7,7 +7,6 @@ package slack
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -115,18 +114,31 @@ func buildSectionText(ctx context.Context, message string) string {
 // 原文を見せるのが目的である以上、たまたま <https://…> の形をした文字列は
 // リンク構文ではなくただの文字列として扱うべきだからです。
 func formatMarkdown(message string) string {
+	return replaceSegments(message, fencedBlockRegex, convertMarkdown, mrkdwnEscaper.Replace)
+}
+
+// replaceSegments は re にマッチする区間と、その外側の区間に、それぞれ別の変換を
+// 適用して連結します。
+//
+// 「一部の区間だけ扱いを変える」処理がこのファイルに 2 つあり（コードブロックの
+// 内外と、リンク・メンションの内外）、変わるのは正規表現と 2 つの変換だけで
+// 走査の形は同じです。
+func replaceSegments(s string, re *regexp.Regexp, outside, inside func(string) string) string {
 	var sb strings.Builder
 	last := 0
 
-	for _, loc := range fencedBlockRegex.FindAllStringIndex(message, -1) {
-		sb.WriteString(convertMarkdown(message[last:loc[0]]))
-		sb.WriteString(mrkdwnEscaper.Replace(message[loc[0]:loc[1]]))
+	for _, loc := range re.FindAllStringIndex(s, -1) {
+		sb.WriteString(outside(s[last:loc[0]]))
+		sb.WriteString(inside(s[loc[0]:loc[1]]))
 		last = loc[1]
 	}
-	sb.WriteString(convertMarkdown(message[last:]))
+	sb.WriteString(outside(s[last:]))
 
 	return sb.String()
 }
+
+// keepVerbatim は区間を変換せずそのまま返します。
+func keepVerbatim(s string) string { return s }
 
 // convertMarkdown はコードブロックの外側 1 区間を mrkdwn へ変換します。
 //
@@ -148,17 +160,7 @@ func convertMarkdown(segment string) string {
 // > がここでエスケープされるため、行頭の > による引用記法は使えません
 // （引用の > とエスケープが必要な > を区別できないためです）。
 func escapeMrkdwn(message string) string {
-	var sb strings.Builder
-	last := 0
-
-	for _, loc := range preservedRegex.FindAllStringIndex(message, -1) {
-		sb.WriteString(mrkdwnEscaper.Replace(message[last:loc[0]]))
-		sb.WriteString(message[loc[0]:loc[1]])
-		last = loc[1]
-	}
-	sb.WriteString(mrkdwnEscaper.Replace(message[last:]))
-
-	return sb.String()
+	return replaceSegments(message, preservedRegex, mrkdwnEscaper.Replace, keepVerbatim)
 }
 
 // truncateHeaderText は見出しを Slack ヘッダーブロックの上限に収めます。
@@ -216,7 +218,6 @@ func closeUnterminatedFence(message string) string {
 func buildFooterBlock() *slack.ContextBlock {
 	return slack.NewContextBlock(
 		"notification-context",
-		slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("送信時刻: %s",
-			jst.Now().Format(jst.LayoutTimestamp)), false, false),
+		slack.NewTextBlockObject("mrkdwn", "送信時刻: "+jst.FormatTimestamp(jst.Now()), false, false),
 	)
 }

@@ -94,6 +94,10 @@ pipeline.Failure(ctx, body, err)            // 本文末尾に「エラー内容
 pipeline.Skipped(ctx, body, reason)         // reason が非 nil なら「理由」を追記
 ```
 
+`Failure` と `Skipped` の追記先はコピーなので、**渡した `Body` は書き換わりません**。
+上のように 1 つの `Body` を結果ごとに渡し直しても、スキップ通知に前の
+「エラー内容」が残る、といったことは起きません。
+
 見出しを実行時の条件で切り替えたい場合（コマンド種別ごとに文言を変える等）は、
 `WithTitles` で見出しだけを差し替えた `Pipeline` を派生させます。
 元の `Pipeline` は変更されないので、1 つ保持したまま呼び出しごとに切り替えられます。
@@ -127,6 +131,20 @@ pipeline.WithTitles(notify.Titles{Success: titleFor(cmd)}).Success(ctx, body)
 
 `Block` の中身は各チャネルの記法変換の対象外で、`- ` や `**` は書き換わりません
 （詳細は [docs/slack.md](docs/slack.md)）。
+
+### リンク先 URL を組み立てる
+
+`Link` は URL が空なら行ごと省きます。その契約に合わせて URL を組み立てるのが
+`notify.JoinURL` です。ベースが空・パス要素が空・URL として解釈できない、の
+いずれでも空文字列を返すので、呼び出し側にリンク行を出すかどうかの分岐が要りません。
+
+```go
+body.Link("History Detail", notify.JoinURL(serviceURL, "/web/history", jobID), jobID)
+// serviceURL か jobID が空なら URL は空文字列 → この行ごと出ません
+```
+
+パス要素は URL エスケープされます（スラッシュは区切りとして残るので、
+`"/web/history"` のようなパスをそのまま渡せます）。
 
 ### 値をコードスパンにする
 

@@ -65,8 +65,10 @@ func (p *Pipeline) Success(ctx context.Context, body *Body) error {
 
 // Failure は失敗を、原因とともに通知します。
 // cause は本文の末尾に「エラー内容」として追記されます。
+//
+// 追記先はコピーなので、渡した body は変更されません（理由は derive）。
 func (p *Pipeline) Failure(ctx context.Context, body *Body, cause error) error {
-	body = orNewBody(body)
+	body = derive(body)
 	body.Error(errorLabel, cause)
 	return p.send(ctx, LevelFailure, p.titles.Failure, body)
 }
@@ -74,12 +76,14 @@ func (p *Pipeline) Failure(ctx context.Context, body *Body, cause error) error {
 // Skipped は処理をスキップしたことを通知します。
 // reason が非 nil の場合のみ、本文の末尾に「理由」として追記されます。
 //
+// 追記先はコピーなので、渡した body は変更されません（理由は derive）。
+//
 // Failure と違い nil を N/A で埋めないのは、スキップの理由が任意だからです。
 // スキップは見出しだけで意味が通ることが多く（「差分がないためスキップしました」など）、
 // そこに「理由: N/A」を足しても情報が増えません。一方 Failure の原因が nil なのは
 // 想定外の状態なので、行を消さず N/A として残します。
 func (p *Pipeline) Skipped(ctx context.Context, body *Body, reason error) error {
-	body = orNewBody(body)
+	body = derive(body)
 	if reason != nil {
 		body.Error(reasonLabel, reason)
 	}
@@ -107,4 +111,15 @@ func orNewBody(b *Body) *Body {
 		return NewBody()
 	}
 	return b
+}
+
+// derive は b と同じ内容を持つ別の Body を返します。b が nil なら空の Body です。
+//
+// Failure と Skipped は本文の末尾に節を追記します。これを渡された Body に直接
+// 書き込むと、同じ Body を使い回した次の通知にも前回の追記が残ります
+// （成功→失敗→スキップと送ると、スキップ通知に前の「エラー内容」が載る）。
+// 組み立て済みの Body を結果ごとに渡し直せる形の API である以上、使い回しは
+// 想定内の使い方なので、追記はコピーの側で行います。
+func derive(b *Body) *Body {
+	return orNewBody(b).clone()
 }

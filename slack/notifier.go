@@ -14,9 +14,13 @@ import (
 // levelColors は結果の種別を Slack の attachment の色に対応させます。
 // good / danger / warning は Slack 側の組み込みキーワードです。
 //
-// LevelNone は意図的に含めません。種別が未指定なら色を付けず、
-// トップレベルの blocks として投稿します。
+// LevelNone は空文字、つまり「色を付けない」です。種別が未指定の通知は
+// トップレベルの blocks として投稿します。値を持たせてでも全ての種別を
+// 並べるのは、種別を足したときに色の指定漏れを exhaustive が拾えるように
+// するためです。抜けたままでもマップ参照は空文字を返して素通りするので、
+// 気付ける形にしておかないと無色で出ます。
 var levelColors = map[notify.Level]string{
+	notify.LevelNone:    "",
 	notify.LevelSuccess: "good",
 	notify.LevelFailure: "danger",
 	notify.LevelSkipped: "warning",
@@ -99,8 +103,9 @@ func (n *notifier) buildWebhookMessage(ctx context.Context, msg notify.Message) 
 
 	var payload slack.WebhookMessage
 
-	color, colored := levelColors[msg.Level]
-	if !colored {
+	// 表に無い種別（数値からの変換など）は空文字になり、LevelNone と同じ扱いになります。
+	color := levelColors[msg.Level]
+	if color == "" {
 		// トップレベルの blocks がある場合、Text は本文として描画されず
 		// プッシュ通知などのフォールバックにだけ使われます。
 		payload.Text = msg.Title
