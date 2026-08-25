@@ -5,6 +5,7 @@
 package slack
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -70,19 +71,19 @@ var mrkdwnEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
 
 // buildMessageBlocks は Slack の Block Kit ブロックを構築します。
 // 見出しと本文はそれぞれのブロックの上限に収まるよう切り詰めます。
-func buildMessageBlocks(headerText string, message string) ([]slack.Block, error) {
+func buildMessageBlocks(ctx context.Context, headerText string, message string) ([]slack.Block, error) {
 	if headerText == "" {
 		return nil, errors.New("通知の見出しが空です")
 	}
 
 	blocks := []slack.Block{
 		slack.NewHeaderBlock(
-			slack.NewTextBlockObject("plain_text", truncateHeaderText(headerText), true, false),
+			slack.NewTextBlockObject("plain_text", truncateHeaderText(ctx, headerText), true, false),
 		),
 		slack.NewDividerBlock(),
 	}
 
-	sectionText := buildSectionText(message)
+	sectionText := buildSectionText(ctx, message)
 	if sectionText != "" {
 		blocks = append(blocks, slack.NewSectionBlock(
 			slack.NewTextBlockObject("mrkdwn", sectionText, false, false), nil, nil),
@@ -95,12 +96,12 @@ func buildMessageBlocks(headerText string, message string) ([]slack.Block, error
 }
 
 // buildSectionText は本文を Slack セクションブロック用の mrkdwn 文字列に変換します。
-func buildSectionText(message string) string {
+func buildSectionText(ctx context.Context, message string) string {
 	if strings.TrimSpace(message) == "" {
 		return ""
 	}
 
-	return truncateSectionText(formatMarkdown(message))
+	return truncateSectionText(ctx, formatMarkdown(message))
 }
 
 // formatMarkdown は一般的な Markdown 記法の一部を Slack mrkdwn に変換します。
@@ -164,26 +165,26 @@ func escapeMrkdwn(message string) string {
 //
 // 上限を超えたまま送ると Slack は invalid_blocks を返し、通知が丸ごと届きません。
 // 見出しの末尾が読めることより通知そのものが届くことが重要なので、切り詰めます。
-func truncateHeaderText(headerText string) string {
+func truncateHeaderText(ctx context.Context, headerText string) string {
 	textLen := utf8.RuneCountInString(headerText)
 	if textLen <= maxHeaderLength {
 		return headerText
 	}
 
-	slog.Warn("The notification title is too long, truncating.",
+	slog.WarnContext(ctx, "The notification title is too long, truncating.",
 		"current_runes", textLen,
 		"max_runes", maxHeaderLength)
 	return truncateWithSuffix(headerText, maxHeaderLength, headerTruncationSuffix)
 }
 
 // truncateSectionText は Slack セクションブロックの上限に収まるよう本文を短縮します。
-func truncateSectionText(message string) string {
+func truncateSectionText(ctx context.Context, message string) string {
 	textLen := utf8.RuneCountInString(message)
 	if textLen <= maxSectionLength {
 		return message
 	}
 
-	slog.Warn("The notification message is too long, truncating.",
+	slog.WarnContext(ctx, "The notification message is too long, truncating.",
 		"current_runes", textLen,
 		"max_runes", maxSectionLength)
 	return closeUnterminatedFence(truncateWithSuffix(message, maxSectionLength, truncationSuffix))

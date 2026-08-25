@@ -185,7 +185,7 @@ func TestFormatMarkdownUnterminatedFenceIsNotProtected(t *testing.T) {
 
 // TestBuildSectionText は、本文全体が mrkdwn に変換されることを検証します。
 func TestBuildSectionText(t *testing.T) {
-	got := buildSectionText("## 見出し\n**重要**\n- item")
+	got := buildSectionText(t.Context(), "## 見出し\n**重要**\n- item")
 	want := "*見出し*\n*重要*\n• item"
 
 	if got != want {
@@ -195,7 +195,7 @@ func TestBuildSectionText(t *testing.T) {
 
 // TestBuildSectionTextEmpty は、空白のみの本文がセクションを生まないことを検証します。
 func TestBuildSectionTextEmpty(t *testing.T) {
-	if got := buildSectionText("   \n  "); got != "" {
+	if got := buildSectionText(t.Context(), "   \n  "); got != "" {
 		t.Errorf("buildSectionText() = %q, want empty", got)
 	}
 }
@@ -207,7 +207,7 @@ func TestTruncateSectionText(t *testing.T) {
 		long[i] = 'あ'
 	}
 
-	got := truncateSectionText(string(long))
+	got := truncateSectionText(t.Context(), string(long))
 	if gotLen := len([]rune(got)); gotLen > maxSectionLength {
 		t.Errorf("切り詰め後の文字数 = %d, want <= %d", gotLen, maxSectionLength)
 	}
@@ -219,7 +219,7 @@ func TestTruncateSectionText(t *testing.T) {
 func TestTruncateSectionTextClosesCodeFence(t *testing.T) {
 	long := codeFence + "\n" + strings.Repeat("x", maxSectionLength+100)
 
-	got := truncateSectionText(long)
+	got := truncateSectionText(t.Context(), long)
 	if count := strings.Count(got, codeFence); count%2 != 0 {
 		t.Errorf("フェンスの数 = %d, want 偶数 (本文 = %q)", count, got[len(got)-40:])
 	}
@@ -234,7 +234,7 @@ func TestTruncateSectionTextClosesCodeFence(t *testing.T) {
 func TestTruncateHeaderText(t *testing.T) {
 	long := strings.Repeat("あ", maxHeaderLength+50)
 
-	got := truncateHeaderText(long)
+	got := truncateHeaderText(t.Context(), long)
 	if gotLen := len([]rune(got)); gotLen > maxHeaderLength {
 		t.Errorf("切り詰め後の文字数 = %d, want <= %d", gotLen, maxHeaderLength)
 	}
@@ -243,7 +243,7 @@ func TestTruncateHeaderText(t *testing.T) {
 	}
 
 	short := "✅ 完了しました"
-	if got := truncateHeaderText(short); got != short {
+	if got := truncateHeaderText(t.Context(), short); got != short {
 		t.Errorf("truncateHeaderText() = %q, want %q", got, short)
 	}
 }
