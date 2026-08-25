@@ -30,17 +30,23 @@ const (
 )
 
 // String は Level の名前を返します。
+//
+// default に落とさず全ての種別を並べるのは、種別を足したときに
+// ここの追記漏れを exhaustive が拾えるようにするためです。
+// switch の後ろの return は、定数以外の値（数値からの変換など）の受け皿です。
 func (l Level) String() string {
 	switch l {
+	case LevelNone:
+		return "none"
 	case LevelSuccess:
 		return "success"
 	case LevelFailure:
 		return "failure"
 	case LevelSkipped:
 		return "skipped"
-	default:
-		return "none"
 	}
+
+	return "none"
 }
 
 // Message は 1 通の通知を表します。
