@@ -1,6 +1,6 @@
 module github.com/shouni/go-notify
 
-go 1.26
+go 1.27
 
 require (
 	github.com/rivo/uniseg v0.4.7
