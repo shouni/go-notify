@@ -74,7 +74,7 @@ func NewNotifier(client httpkit.Requester, webhookURL string) (notify.Notifier, 
 // 推測することはしません。何を見出しにするかは通知の意味を決める判断であり、
 // 本文の 1 行目がそれである保証はどこにもないためです。
 func (n *notifier) Notify(ctx context.Context, msg notify.Message) error {
-	payload, err := n.buildWebhookMessage(msg)
+	payload, err := n.buildWebhookMessage(ctx, msg)
 	if err != nil {
 		return err
 	}
@@ -91,8 +91,8 @@ func (n *notifier) Notify(ctx context.Context, msg notify.Message) error {
 // 種別に色が対応する場合だけ attachment に包みます。attachment は左端に色帯が付く
 // 代わりに本文が少し内側に寄るため、種別が未指定の通知まで見た目を変えないよう、
 // LevelNone はトップレベルの blocks のままにします。
-func (n *notifier) buildWebhookMessage(msg notify.Message) (slack.WebhookMessage, error) {
-	blocks, err := buildMessageBlocks(msg.Title, msg.Body)
+func (n *notifier) buildWebhookMessage(ctx context.Context, msg notify.Message) (slack.WebhookMessage, error) {
+	blocks, err := buildMessageBlocks(ctx, msg.Title, msg.Body)
 	if err != nil {
 		return slack.WebhookMessage{}, fmt.Errorf("slack Block Kitの構築に失敗しました: %w", err)
 	}
