@@ -314,10 +314,9 @@ func TestPipelinePropagatesSendError(t *testing.T) {
 	}
 }
 
-// TestPipelineFailureKeepsCallerBodyIntact は、Failure が呼び出し側の Body を
-// 破壊的に書き換えても、同じ Body を使い回さない限り影響がないことを示します。
-// 追記は意図した動作であり、この境界を明示しておきます。
-func TestPipelineFailureAppendsToGivenBody(t *testing.T) {
+// TestPipelineFailureKeepsCallerBodyIntact は、Failure が渡された Body を
+// 書き換えないことを検証します。追記先はコピーです。
+func TestPipelineFailureKeepsCallerBodyIntact(t *testing.T) {
 	rec := &recorder{}
 	p := notify.NewPipeline(rec, testTitles)
 
@@ -326,7 +325,47 @@ func TestPipelineFailureAppendsToGivenBody(t *testing.T) {
 		t.Fatalf("通知に失敗しました: %v", err)
 	}
 
-	if !strings.Contains(body.String(), "**エラー内容:**") {
-		t.Errorf("渡した Body にエラー内容が追記されていません: %q", body.String())
+	if strings.Contains(body.String(), "**エラー内容:**") {
+		t.Errorf("渡した Body が書き換えられています: %q", body.String())
+	}
+	if !strings.Contains(rec.got[0].Body, "**エラー内容:**") {
+		t.Errorf("送信された本文にエラー内容がありません: %q", rec.got[0].Body)
+	}
+}
+
+// TestPipelineBodyReuseAcrossOutcomes は、1 つの Body を結果ごとに渡し直しても
+// 前回の追記が残らないことを検証します。
+//
+// これが本パッケージで最も踏みやすい罠でした。Failure が呼び出し側の Body へ
+// 直接書き込んでいた頃は、成功 → 失敗 → スキップと送ると、スキップ通知の本文に
+// 前の「エラー内容」が載ったまま出ていました。
+func TestPipelineBodyReuseAcrossOutcomes(t *testing.T) {
+	rec := &recorder{}
+	p := notify.NewPipeline(rec, testTitles)
+	ctx := context.Background()
+
+	body := notify.NewBody().Code("Job ID", "job-1")
+	if err := p.Success(ctx, body); err != nil {
+		t.Fatalf("成功通知に失敗しました: %v", err)
+	}
+	if err := p.Failure(ctx, body, errors.New("原因")); err != nil {
+		t.Fatalf("失敗通知に失敗しました: %v", err)
+	}
+	if err := p.Skipped(ctx, body, errors.New("差分がありません")); err != nil {
+		t.Fatalf("スキップ通知に失敗しました: %v", err)
+	}
+
+	wants := []string{
+		"**Job ID:** `job-1`",
+		"**Job ID:** `job-1`\n\n**エラー内容:**\n原因",
+		"**Job ID:** `job-1`\n\n**理由:**\n差分がありません",
+	}
+	if len(rec.got) != len(wants) {
+		t.Fatalf("送信件数 = %d, want %d", len(rec.got), len(wants))
+	}
+	for i, want := range wants {
+		if rec.got[i].Body != want {
+			t.Errorf("%d 件目の Body = %q, want %q", i, rec.got[i].Body, want)
+		}
 	}
 }
