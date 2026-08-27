@@ -6,7 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Go Notify is a **library, not a CLI** — it has no `main`, no `cmd/`, and no cobra dependency. It is the extraction of the retired sibling repo `go-notifier`'s `pkg/slack` (Slack + Backlog + CLI, now deleted) plus a new channel-agnostic layer on top; nothing here should grow a command-line surface.
 
-Five services consume it today (`ap-comp`, `ap-mv`, `ap-story`, `ap-voice`, `adk-review`), each of which previously hand-rolled its own `internal/adapters/slack.go`. The `notify` package exists to absorb what those services duplicate — check the sibling `go.mod`s before trusting this list, it drifts (`ap-chain`, `ap-comic` and `git-gemini-web` have since dropped the dependency; `ap-story` and `adk-review` joined).
+Several services consume it today, each of which previously hand-rolled its own
+`internal/adapters/slack.go`. The `notify` package exists to absorb what those services duplicate. **Do
+not list them here** — the list that used to live in this sentence had already gone stale, naming three
+repos that no longer exist, and some of the current ones are private:
+
+    grep -l "shouni/go-notify" ~/GolandProjects/*/go.mod
 
 ## Commands
 
