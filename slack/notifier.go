@@ -12,13 +12,10 @@ import (
 )
 
 // levelColors は結果の種別を Slack の attachment の色に対応させます。
-// good / danger / warning は Slack 側の組み込みキーワードです。
+// good / danger / warning は Slack の組み込みキーワードで、空文字は「色を付けない」です。
 //
-// LevelNone は空文字、つまり「色を付けない」です。種別が未指定の通知は
-// トップレベルの blocks として投稿します。値を持たせてでも全ての種別を
-// 並べるのは、種別を足したときに色の指定漏れを exhaustive が拾えるように
-// するためです。抜けたままでもマップ参照は空文字を返して素通りするので、
-// 気付ける形にしておかないと無色で出ます。
+// LevelNone にも値を持たせて全種別を並べるのは、種別を足したときの指定漏れを exhaustive に
+// 拾わせるためです。抜けてもマップ参照は空文字を返して素通りし、無色で出てしまいます。
 var levelColors = map[notify.Level]string{
 	notify.LevelNone:    "",
 	notify.LevelSuccess: "good",
@@ -42,25 +39,17 @@ var _ notify.Notifier = (*notifier)(nil)
 
 // NewNotifier は Slack Incoming Webhook への notify.Notifier を生成します。
 //
-// webhookURL が空文字または空白のみの場合は、Slack 通知が設定されていない
-// ものとして notify.Disabled() を返します（理由は notify.Disabled を参照）。
-// 逆に webhookURL が設定されているのに client が nil の場合は、送信できない
-// 設定ミスなのでエラーを返します。
+// webhookURL が空なら通知未設定として notify.Disabled() を返します。設定されているのに
+// client が nil の場合は、送信できない設定ミスなのでエラーを返します。
 //
 // # リトライについて
 //
-// Webhook への投稿は非冪等です。Slack には届いたのにレスポンスを取りこぼすと、
-// リトライで同じ通知が二重に投稿されます。既定の httpkit.New は
-// リトライが有効なので、他の用途とクライアントを共有していると起こり得ます。
-//
-// 本パッケージはリトライ方針を持たず、渡された client をそのまま使います。
-// 重複を避けたい場合は、タイムアウトや SSRF 対策の設定とコネクションプールを
-// 共有したまま、リトライだけ切ったクライアントを渡してください。
+// Webhook への投稿は非冪等で、Slack に届いたのにレスポンスを取りこぼすと同じ通知が
+// 二重に投稿されます。既定の httpkit.New はリトライが有効なので、クライアントを他の
+// 用途と共有していると起こり得ます。取りこぼしと重複のどちらを避けたいかはアプリケーション
+// 側の判断なので、本パッケージは方針を持たず渡された client をそのまま使います。
 //
 //	notifier, err := slack.NewNotifier(httpClient.WithoutRetry(), webhookURL)
-//
-// 取りこぼしと重複のどちらを避けたいかはアプリケーション側の判断なので、
-// ライブラリでは決めません。
 func NewNotifier(client httpkit.Poster, webhookURL string) (notify.Notifier, error) {
 	if strings.TrimSpace(webhookURL) == "" {
 		return notify.Disabled(), nil
@@ -72,11 +61,9 @@ func NewNotifier(client httpkit.Poster, webhookURL string) (notify.Notifier, err
 	return &notifier{client: client, webhookURL: webhookURL}, nil
 }
 
-// Notify は notify.Notifier インターフェースを実装します。
-//
-// msg.Title は必須です。空の場合はエラーを返します。本文から見出しを
-// 推測することはしません。何を見出しにするかは通知の意味を決める判断であり、
-// 本文の 1 行目がそれである保証はどこにもないためです。
+// Notify は notify.Notifier インターフェースを実装します。msg.Title は必須です。
+// 本文から見出しを推測しないのは、何を見出しにするかが通知の意味を決める判断であり、
+// 本文の 1 行目がそれである保証がないためです。
 func (n *notifier) Notify(ctx context.Context, msg notify.Message) error {
 	payload, err := n.buildWebhookMessage(ctx, msg)
 	if err != nil {
@@ -92,9 +79,8 @@ func (n *notifier) Notify(ctx context.Context, msg notify.Message) error {
 
 // buildWebhookMessage は Slack Incoming Webhook に送信するペイロードを構築します。
 //
-// 種別に色が対応する場合だけ attachment に包みます。attachment は左端に色帯が付く
-// 代わりに本文が少し内側に寄るため、種別が未指定の通知まで見た目を変えないよう、
-// LevelNone はトップレベルの blocks のままにします。
+// 色が対応する種別だけ attachment に包みます。attachment は左端に色帯が付く代わりに本文が
+// 内側へ寄るため、種別が未指定の通知の見た目を変えないよう LevelNone は blocks のままです。
 func (n *notifier) buildWebhookMessage(ctx context.Context, msg notify.Message) (slack.WebhookMessage, error) {
 	blocks, err := buildMessageBlocks(ctx, msg.Title, msg.Body)
 	if err != nil {
