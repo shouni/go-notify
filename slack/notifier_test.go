@@ -7,37 +7,36 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shouni/go-http-kit/httpkit"
 	"github.com/shouni/go-notify/notify"
 	"github.com/shouni/go-notify/slack"
 	slackgo "github.com/slack-go/slack"
 )
 
-// stubRequester は送信ペイロードを記録する httpkit.Requester のスタブです。
-type stubRequester struct {
+// stubPoster は送信ペイロードを記録する httpkit.Poster のスタブです。
+type stubPoster struct {
 	sent slackgo.WebhookMessage
 	fail error
 }
 
-// PostJSONAndFetchBytes は送信された WebhookMessage を記録します。
-func (s *stubRequester) PostJSONAndFetchBytes(_ context.Context, _ string, data any) ([]byte, error) {
+// PostJSON は送信された WebhookMessage を記録します。
+func (s *stubPoster) PostJSON(_ context.Context, _ string, data any) (*httpkit.Result, error) {
 	if msg, ok := data.(slackgo.WebhookMessage); ok {
 		s.sent = msg
 	}
-	return []byte("ok"), s.fail
+	if s.fail != nil {
+		return nil, s.fail
+	}
+	return &httpkit.Result{Status: http.StatusOK, Body: []byte("ok")}, nil
 }
 
-func (s *stubRequester) DoRequest(_ *http.Request) ([]byte, error) { return nil, nil }
-func (s *stubRequester) FetchBytes(_ context.Context, _ string) ([]byte, string, error) {
-	return nil, "", nil
-}
-func (s *stubRequester) FetchAndDecodeJSON(_ context.Context, _ string, _ any) error { return nil }
-func (s *stubRequester) PostRawBodyAndFetchBytes(_ context.Context, _ string, _ []byte, _ string) ([]byte, error) {
+func (s *stubPoster) Post(_ context.Context, _, _ string, _ []byte) (*httpkit.Result, error) {
 	return nil, nil
 }
 
 // blockSet は送信済みメッセージのブロック一式を返します。
 // 種別付きの通知は attachment に包まれるため、両方の置き場所を見ます。
-func (s *stubRequester) blockSet(t *testing.T) []slackgo.Block {
+func (s *stubPoster) blockSet(t *testing.T) []slackgo.Block {
 	t.Helper()
 	if s.sent.Blocks != nil {
 		return s.sent.Blocks.BlockSet
@@ -50,7 +49,7 @@ func (s *stubRequester) blockSet(t *testing.T) []slackgo.Block {
 }
 
 // headerText は送信済みメッセージのヘッダーブロックの文字列を返します。
-func (s *stubRequester) headerText(t *testing.T) string {
+func (s *stubPoster) headerText(t *testing.T) string {
 	t.Helper()
 	for _, b := range s.blockSet(t) {
 		if header, ok := b.(*slackgo.HeaderBlock); ok && header.Text != nil {
@@ -62,7 +61,7 @@ func (s *stubRequester) headerText(t *testing.T) string {
 }
 
 // sectionText は送信済みメッセージのセクションブロック本文を返します。
-func (s *stubRequester) sectionText(t *testing.T) string {
+func (s *stubPoster) sectionText(t *testing.T) string {
 	t.Helper()
 	for _, b := range s.blockSet(t) {
 		if section, ok := b.(*slackgo.SectionBlock); ok && section.Text != nil {
@@ -112,7 +111,7 @@ func TestNewNotifierRequiresClientWhenConfigured(t *testing.T) {
 
 // TestNewNotifierEnabled は、設定が揃っていれば送信可能な Notifier になることを検証します。
 func TestNewNotifierEnabled(t *testing.T) {
-	n, err := slack.NewNotifier(&stubRequester{}, "https://hooks.slack.com/services/test")
+	n, err := slack.NewNotifier(&stubPoster{}, "https://hooks.slack.com/services/test")
 	if err != nil {
 		t.Fatalf("NewNotifier() = %v, want nil", err)
 	}
@@ -123,7 +122,7 @@ func TestNewNotifierEnabled(t *testing.T) {
 
 // TestNotifyUsesTitleAsHeader は Message.Title が見出しになることを検証します。
 func TestNotifyUsesTitleAsHeader(t *testing.T) {
-	stub := &stubRequester{}
+	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
 	if err != nil {
 		t.Fatalf("NewNotifier() = %v, want nil", err)
@@ -143,7 +142,7 @@ func TestNotifyUsesTitleAsHeader(t *testing.T) {
 // Slack のヘッダーブロックは 150 文字までで、超えたまま送ると invalid_blocks が
 // 返り通知が丸ごと失われます。本文だけでなく見出しも守る必要があります。
 func TestNotifyTruncatesLongTitle(t *testing.T) {
-	stub := &stubRequester{}
+	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
 	if err != nil {
 		t.Fatalf("NewNotifier() = %v, want nil", err)
@@ -164,7 +163,7 @@ func TestNotifyTruncatesLongTitle(t *testing.T) {
 // 本文の 1 行目から見出しを推測する機能は持ちません。何を見出しにするかは
 // 通知の意味を決める判断で、本文の先頭行がそれである保証は無いためです。
 func TestNotifyRequiresTitle(t *testing.T) {
-	stub := &stubRequester{}
+	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
 	if err != nil {
 		t.Fatalf("NewNotifier() = %v, want nil", err)
@@ -192,7 +191,7 @@ func TestNotifyLevelSetsAttachmentColor(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			stub := &stubRequester{}
+			stub := &stubPoster{}
 			n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
 			if err != nil {
 				t.Fatalf("NewNotifier() = %v, want nil", err)
@@ -223,7 +222,7 @@ func TestNotifyLevelSetsAttachmentColor(t *testing.T) {
 // 見出しブロックと合わせて Slack 上に見出しが 2 回並びます。
 // フォールバックは Attachment.Fallback が担うため、プッシュ通知の文言は残ります。
 func TestNotifyLevelDoesNotDuplicateTitle(t *testing.T) {
-	stub := &stubRequester{}
+	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
 	if err != nil {
 		t.Fatalf("NewNotifier() = %v, want nil", err)
@@ -249,7 +248,7 @@ func TestNotifyLevelDoesNotDuplicateTitle(t *testing.T) {
 // attachment に包まれず従来どおり投稿されることを検証します。
 // 既存の通知の見た目を変えないための境界です。
 func TestNotifyWithoutLevelKeepsTopLevelBlocks(t *testing.T) {
-	stub := &stubRequester{}
+	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
 	if err != nil {
 		t.Fatalf("NewNotifier() = %v, want nil", err)
@@ -269,7 +268,7 @@ func TestNotifyWithoutLevelKeepsTopLevelBlocks(t *testing.T) {
 
 // TestNotifyPropagatesSendError は送信失敗が呼び出し元へ伝わることを検証します。
 func TestNotifyPropagatesSendError(t *testing.T) {
-	stub := &stubRequester{fail: errors.New("network error")}
+	stub := &stubPoster{fail: errors.New("network error")}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
 	if err != nil {
 		t.Fatalf("NewNotifier() = %v, want nil", err)
@@ -284,7 +283,7 @@ func TestNotifyPropagatesSendError(t *testing.T) {
 // Slack mrkdwn に変換されて送信されることを検証します。
 // notify パッケージをチャネル非依存に保つための境界そのものです。
 func TestNotifyRendersBodyAsMrkdwn(t *testing.T) {
-	stub := &stubRequester{}
+	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
 	if err != nil {
 		t.Fatalf("NewNotifier() = %v, want nil", err)
@@ -313,7 +312,7 @@ func TestNotifyRendersBodyAsMrkdwn(t *testing.T) {
 // 呼び出し側が "## " や "- " を手書きしなくても済むことが両メソッドの目的なので、
 // Body の出力が実際に変換される経路をここで固定します。
 func TestNotifyRendersHeadingAndBulletAsMrkdwn(t *testing.T) {
-	stub := &stubRequester{}
+	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
 	if err != nil {
 		t.Fatalf("NewNotifier() = %v, want nil", err)
@@ -341,7 +340,7 @@ func TestNotifyRendersHeadingAndBulletAsMrkdwn(t *testing.T) {
 // TestNotifyRendersErrorBlockAsMrkdwn は、エラー節がコードブロックのまま
 // 変換されることを検証します。
 func TestNotifyRendersErrorBlockAsMrkdwn(t *testing.T) {
-	stub := &stubRequester{}
+	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
 	if err != nil {
 		t.Fatalf("NewNotifier() = %v, want nil", err)
@@ -366,7 +365,7 @@ func TestNotifyRendersErrorBlockAsMrkdwn(t *testing.T) {
 // ラベル側が mrkdwn に変換される一方でブロックの中身は素通しになる、
 // という非対称がここでの正しい振る舞いです。
 func TestNotifyKeepsCodeBlockContentVerbatim(t *testing.T) {
-	stub := &stubRequester{}
+	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
 	if err != nil {
 		t.Fatalf("NewNotifier() = %v, want nil", err)

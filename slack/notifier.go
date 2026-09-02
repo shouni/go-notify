@@ -33,7 +33,7 @@ var levelColors = map[notify.Level]string{
 // 継承するためです（受け付けるのは Slack が非推奨とした custom integration 版だけ）。
 // サービスごとに表示を変えたい場合は、Slack アプリを分けてください。
 type notifier struct {
-	client     httpkit.Requester
+	client     httpkit.Poster
 	webhookURL string
 }
 
@@ -50,7 +50,7 @@ var _ notify.Notifier = (*notifier)(nil)
 // # リトライについて
 //
 // Webhook への投稿は非冪等です。Slack には届いたのにレスポンスを取りこぼすと、
-// リトライで同じ通知が二重に投稿されます。既定の httpkit.New(timeout) は
+// リトライで同じ通知が二重に投稿されます。既定の httpkit.New は
 // リトライが有効なので、他の用途とクライアントを共有していると起こり得ます。
 //
 // 本パッケージはリトライ方針を持たず、渡された client をそのまま使います。
@@ -61,7 +61,7 @@ var _ notify.Notifier = (*notifier)(nil)
 //
 // 取りこぼしと重複のどちらを避けたいかはアプリケーション側の判断なので、
 // ライブラリでは決めません。
-func NewNotifier(client httpkit.Requester, webhookURL string) (notify.Notifier, error) {
+func NewNotifier(client httpkit.Poster, webhookURL string) (notify.Notifier, error) {
 	if strings.TrimSpace(webhookURL) == "" {
 		return notify.Disabled(), nil
 	}
@@ -83,7 +83,7 @@ func (n *notifier) Notify(ctx context.Context, msg notify.Message) error {
 		return err
 	}
 
-	if _, err := n.client.PostJSONAndFetchBytes(ctx, n.webhookURL, payload); err != nil {
+	if _, err := n.client.PostJSON(ctx, n.webhookURL, payload); err != nil {
 		return fmt.Errorf("slack Webhookメッセージの送信に失敗しました: %w", err)
 	}
 

@@ -100,7 +100,7 @@ Fenced code blocks are exempt from markup conversion but not from escaping. `for
 
 ### HTTP
 
-No package here owns HTTP concerns. All outbound traffic goes through `go-http-kit`'s `httpkit.Requester`, injected into constructors — it carries timeouts, exponential-backoff retry (`netarmor/retry`), SSRF-safe dialing, and response-size limits. Take the narrow `httpkit.Requester` interface, not `*httpkit.Client`, so tests can substitute a fake. Package code contains no retry loops, no `http.Client`, no status-code handling.
+No package here owns HTTP concerns. All outbound traffic goes through `go-http-kit`'s `httpkit.Poster`, injected into constructors — it carries timeouts, exponential-backoff retry (`netarmor/retry`), SSRF-safe dialing, and response-size limits. Take the narrow `httpkit.Poster` interface, not `*httpkit.Client`, so tests can substitute a fake. Package code contains no retry loops, no `http.Client`, no status-code handling.
 
 That includes the retry policy, and the consequence is documented rather than fixed here: **webhook posts are not idempotent** — each successful one creates a new Slack message, so a retry after a lost response posts the notification twice. `httpkit.New(timeout)` enables retry by default, so a caller sharing one client across all its outbound traffic gets that behaviour for notifications too. The fix belongs to the caller — `slack.NewNotifier(httpClient.WithoutRetry(), url)`, which derives a no-retry client sharing the original's timeout, SSRF settings, and connection pool — because whether a duplicate notification is worse than a dropped one is an application decision. Do not paper over it by constructing a client inside this package — that would silently discard the injected one and take the choice away.
 
@@ -125,5 +125,5 @@ If a genuinely effective option appears later (a footer toggle, say), adding `op
 
 - Doc comments are Japanese, one per exported *and* unexported symbol, in the `名前 は …します。` form. Error strings are Japanese; wrap with `%w`.
 - Constructors return `(*T, error)` and validate up front; where configuration is needed, use `type Option func(*T)` variadics.
-- Tests are black-box (`package notify_test` / `package slack_test`) driving a stub `httpkit.Requester`. Use white-box `_internal_test.go` only for unexported helpers — `slack/blocks_internal_test.go` is the one such file, because the Markdown conversion rules are worth testing directly rather than through a webhook payload.
+- Tests are black-box (`package notify_test` / `package slack_test`) driving a stub `httpkit.Poster`. Use white-box `_internal_test.go` only for unexported helpers — `slack/blocks_internal_test.go` is the one such file, because the Markdown conversion rules are worth testing directly rather than through a webhook payload.
 - Comments explain *why*, not *what*. The escaping-order and preserved-construct comments in `blocks.go` are the model: each states the failure it prevents.
