@@ -23,10 +23,8 @@ type Titles struct {
 }
 
 // Pipeline は、非同期処理の成功・失敗・スキップを定型の見出しで通知します。
-//
-// 結果によって見出しが変わるだけで本文の組み立て方は共通、という
-// パイプライン系サービスの通知形をそのまま表現しています。
-// 見出しを実行時の条件で切り替えたい場合は WithTitles を使ってください。
+// 結果で見出しだけが変わり本文の組み立ては共通、というパイプライン系の形をそのまま
+// 表現しています。実行時に見出しを切り替えたい場合は WithTitles を使ってください。
 type Pipeline struct {
 	notifier Notifier
 	titles   Titles
@@ -41,16 +39,13 @@ func NewPipeline(notifier Notifier, titles Titles) *Pipeline {
 	return &Pipeline{notifier: notifier, titles: titles}
 }
 
-// WithTitles は見出しだけを差し替えた Pipeline を返します。元の Pipeline は変更しません。
-//
-// titles は元の見出しとマージせず、そのまま置き換えます。
-// これから送る結果の見出しだけ埋めれば十分です。
+// WithTitles は見出しだけを差し替えた Pipeline を返します。元は変更せず、titles は
+// マージせずに置き換えるので、これから送る結果の見出しだけ埋めれば十分です。
 //
 //	p.WithTitles(Titles{Success: titleFor(cmd)}).Success(ctx, body)
 //
-// これが無いと、見出しを切り替えたい呼び出し側は Pipeline を捨てて Notifier を
-// 直接使うことになり、Enabled の判定と失敗時のエラー節の組み立てを各自で
-// 再実装することになります。
+// これが無いと、見出しを切り替えたい側は Pipeline を捨てて Notifier を直接使うことになり、
+// Enabled の判定と失敗時のエラー節を各自で再実装することになります。
 func (p *Pipeline) WithTitles(titles Titles) *Pipeline {
 	return &Pipeline{notifier: p.notifier, titles: titles}
 }
@@ -63,25 +58,20 @@ func (p *Pipeline) Success(ctx context.Context, body *Body) error {
 	return p.send(ctx, LevelSuccess, p.titles.Success, body)
 }
 
-// Failure は失敗を、原因とともに通知します。
-// cause は本文の末尾に「エラー内容」として追記されます。
-//
-// 追記先はコピーなので、渡した body は変更されません（理由は derive）。
+// Failure は失敗を、原因とともに通知します。cause は本文の末尾に「エラー内容」として
+// 追記されます。追記先はコピーなので、渡した body は変更されません（理由は derive）。
 func (p *Pipeline) Failure(ctx context.Context, body *Body, cause error) error {
 	body = derive(body)
 	body.Error(errorLabel, cause)
 	return p.send(ctx, LevelFailure, p.titles.Failure, body)
 }
 
-// Skipped は処理をスキップしたことを通知します。
-// reason が非 nil の場合のみ、本文の末尾に「理由」として追記されます。
+// Skipped は処理をスキップしたことを通知します。reason が非 nil のときだけ、本文の
+// 末尾に「理由」として追記されます。追記先はコピーです（理由は derive）。
 //
-// 追記先はコピーなので、渡した body は変更されません（理由は derive）。
-//
-// Failure と違い nil を N/A で埋めないのは、スキップの理由が任意だからです。
-// スキップは見出しだけで意味が通ることが多く（「差分がないためスキップしました」など）、
-// そこに「理由: N/A」を足しても情報が増えません。一方 Failure の原因が nil なのは
-// 想定外の状態なので、行を消さず N/A として残します。
+// Failure と違い nil を N/A で埋めないのは、スキップの理由が任意だからです。見出しだけで
+// 意味が通ることが多く、「理由: N/A」を足しても情報が増えません。Failure の原因が nil な
+// のは想定外の状態なので、あちらは行を残します。
 func (p *Pipeline) Skipped(ctx context.Context, body *Body, reason error) error {
 	body = derive(body)
 	if reason != nil {
@@ -90,10 +80,8 @@ func (p *Pipeline) Skipped(ctx context.Context, body *Body, reason error) error 
 	return p.send(ctx, LevelSkipped, p.titles.Skipped, body)
 }
 
-// send は種別・見出し・本文を Message にまとめて送信します。
-//
-// 種別はここで確定します。結果ごとのメソッドを通っている以上、呼び出し側に
-// 指定させる理由が無く、指定させれば見出しと種別が食い違う余地を作るだけです。
+// send は種別・見出し・本文を Message にまとめて送信します。種別をここで確定するのは、
+// 呼び出し側に指定させると見出しと種別が食い違う余地を作るだけだからです。
 func (p *Pipeline) send(ctx context.Context, level Level, title string, body *Body) error {
 	if title == "" {
 		return errors.New("通知の見出しが設定されていません")
@@ -115,11 +103,9 @@ func orNewBody(b *Body) *Body {
 
 // derive は b と同じ内容を持つ別の Body を返します。b が nil なら空の Body です。
 //
-// Failure と Skipped は本文の末尾に節を追記します。これを渡された Body に直接
-// 書き込むと、同じ Body を使い回した次の通知にも前回の追記が残ります
-// （成功→失敗→スキップと送ると、スキップ通知に前の「エラー内容」が載る）。
-// 組み立て済みの Body を結果ごとに渡し直せる形の API である以上、使い回しは
-// 想定内の使い方なので、追記はコピーの側で行います。
+// Failure と Skipped の追記を渡された Body に直接書くと、同じ Body を使い回した次の通知に
+// 前回の節が残ります（成功→失敗→スキップで、スキップ通知に前の「エラー内容」が載る）。
+// 結果ごとに Body を渡し直せる API である以上、使い回しは想定内なのでコピー側に追記します。
 func derive(b *Body) *Body {
 	return orNewBody(b).clone()
 }

@@ -105,24 +105,17 @@ func buildSectionText(ctx context.Context, message string) string {
 
 // formatMarkdown は一般的な Markdown 記法の一部を Slack mrkdwn に変換します。
 //
-// コードブロックの中身は記法変換の対象外です。原文をそのまま見せるための
-// ブロックで - を • に、**text** を *text* に書き換えては、貼った本人が
-// 見たいはずの原文が壊れます。
-//
-// エスケープだけはブロック内でも必要なので、変換と分けて適用します。
-// ブロック内で escapeMrkdwn ではなく無条件のエスケープを使うのは同じ理由です。
-// 原文を見せるのが目的である以上、たまたま <https://…> の形をした文字列は
-// リンク構文ではなくただの文字列として扱うべきだからです。
+// コードブロックの中身は変換しません。原文を見せるためのブロックで - を • に
+// 書き換えては、貼った本人が見たい原文が壊れます。エスケープだけはブロック内でも必要
+// なので分けて適用し、そこでは escapeMrkdwn ではなく無条件のエスケープを使います
+// （原文を見せる場では <https://…> の形をした文字列もただの文字列だからです）。
 func formatMarkdown(message string) string {
 	return replaceSegments(message, fencedBlockRegex, convertMarkdown, mrkdwnEscaper.Replace)
 }
 
-// replaceSegments は re にマッチする区間と、その外側の区間に、それぞれ別の変換を
-// 適用して連結します。
-//
-// 「一部の区間だけ扱いを変える」処理がこのファイルに 2 つあり（コードブロックの
-// 内外と、リンク・メンションの内外）、変わるのは正規表現と 2 つの変換だけで
-// 走査の形は同じです。
+// replaceSegments は re にマッチする区間とその外側に、別々の変換を適用して連結します。
+// 「一部の区間だけ扱いを変える」処理がこのファイルに 2 つあり（コードブロックの内外と、
+// リンク・メンションの内外）、変わるのは正規表現と変換だけで走査の形は同じです。
 func replaceSegments(s string, re *regexp.Regexp, outside, inside func(string) string) string {
 	var sb strings.Builder
 	last := 0
@@ -142,9 +135,8 @@ func keepVerbatim(s string) string { return s }
 
 // convertMarkdown はコードブロックの外側 1 区間を mrkdwn へ変換します。
 //
-// リンク変換を先に、エスケープを後に行います。Slack が & < > の
-// エスケープを求めるのはプレーンテキストだけで、<URL|表示テキスト> の
-// 内側は構文として解釈済みのため対象外だからです。逆順にすると
+// リンク変換が先、エスケープが後です。Slack が & < > のエスケープを求めるのはプレーン
+// テキストだけで、<URL|表示テキスト> の内側は構文として解釈済みだからです。逆順にすると
 // 署名付き URL のクエリ区切り & が &amp; に化けて署名が変わり、URL が壊れます。
 func convertMarkdown(segment string) string {
 	segment = linkRegex.ReplaceAllString(segment, "<$2|$1>")
@@ -154,19 +146,15 @@ func convertMarkdown(segment string) string {
 	return listItemRegex.ReplaceAllString(segment, "• ")
 }
 
-// escapeMrkdwn は、プレーンテキスト中の Slack 制御文字を実体参照へ変換します。
-// リンク・メンションの構文と既存の実体参照はそのまま残します。
-//
-// > がここでエスケープされるため、行頭の > による引用記法は使えません
-// （引用の > とエスケープが必要な > を区別できないためです）。
+// escapeMrkdwn は、プレーンテキスト中の Slack 制御文字を実体参照へ変換します。リンク・
+// メンションの構文と既存の実体参照は残します。> もエスケープするため行頭の引用記法は
+// 使えません（引用の > とエスケープが必要な > を区別できないためです）。
 func escapeMrkdwn(message string) string {
 	return replaceSegments(message, preservedRegex, mrkdwnEscaper.Replace, keepVerbatim)
 }
 
-// truncateHeaderText は見出しを Slack ヘッダーブロックの上限に収めます。
-//
-// 上限を超えたまま送ると Slack は invalid_blocks を返し、通知が丸ごと届きません。
-// 見出しの末尾が読めることより通知そのものが届くことが重要なので、切り詰めます。
+// truncateHeaderText は見出しを Slack ヘッダーブロックの上限に収めます。超えたまま送ると
+// Slack が invalid_blocks を返し、通知が丸ごと届かないためです。
 func truncateHeaderText(ctx context.Context, headerText string) string {
 	textLen := utf8.RuneCountInString(headerText)
 	if textLen <= maxHeaderLength {
@@ -193,19 +181,17 @@ func truncateSectionText(ctx context.Context, message string) string {
 }
 
 // truncateWithSuffix は s を maxLen 文字以内に収め、末尾に suffix を付けます。
-// 呼び出し側が上限超過を判定済みであることを前提にします。
+// 呼び出し側が上限超過を判定済みであることが前提です。
 //
-// 上限の判定はルーン数ですが、切り詰めは書記素クラスタ単位です（理由は truncateGraphemes）。
-// クラスタ数はルーン数以下なので、ルーンでの判定が「短縮が必要な場合」を取りこぼすことはありません。
+// 判定はルーン数、切り詰めは書記素クラスタ単位です（理由は truncateGraphemes）。
+// クラスタ数はルーン数以下なので、ルーン判定が短縮の必要な場合を取りこぼすことはありません。
 func truncateWithSuffix(s string, maxLen int, suffix string) string {
 	return truncateGraphemes(s, maxLen-utf8.RuneCountInString(suffix), suffix)
 }
 
-// closeUnterminatedFence は、切り詰めでコードブロックの途中が切れた場合に閉じフェンスを補います。
-//
-// 長い出力を貼るための Body.Block が最も切り詰めに当たりやすく、そこで切ると
-// 閉じフェンスごと落ちて開いたままの mrkdwn になります。以降の描画が崩れるため、
-// 切った側で閉じます。
+// closeUnterminatedFence は、切り詰めでコードブロックが途中で切れた場合に閉じフェンスを
+// 補います。長い出力を貼る Body.Block が最も切り詰めに当たりやすく、閉じフェンスごと落ちると
+// 以降の描画が崩れるためです。
 func closeUnterminatedFence(message string) string {
 	if strings.Count(message, codeFence)%2 == 0 {
 		return message

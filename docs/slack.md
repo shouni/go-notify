@@ -17,7 +17,7 @@ notifier, err := slack.NewNotifier(httpClient.WithoutRetry(), os.Getenv("SLACK_W
 **Webhook への投稿は非冪等です。** 成功するたびに新しいメッセージが作られるため、
 Slack には届いたのにレスポンスを取りこぼしてリトライすると、同じ通知が二重に投稿されます。
 
-本ライブラリはリトライ方針を持たず、渡された `httpkit.Requester` をそのまま使います。
+本ライブラリはリトライ方針を持たず、渡された `httpkit.Poster` をそのまま使います。
 `httpkit.New(timeout)` は既定でリトライが有効なので、**他の用途と 1 つのクライアントを
 共有していると重複投稿が起こり得ます**。
 

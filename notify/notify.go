@@ -10,11 +10,8 @@ import "context"
 // NotAvailable は値が存在しない場合に表示する既定の文字列です。
 const NotAvailable = "N/A"
 
-// Level は通知が伝える結果の種別です。
-//
-// 見出しの文言と違い、これは機械が読める形の結果です。チャネル側が
-// 色やアイコンを出し分けるために使います。どう表現するかは各チャネルの
-// 判断で、本パッケージは種別を運ぶだけです。
+// Level は通知が伝える結果の種別です。見出しの文言と違い機械が読める形で、
+// チャネルが色やアイコンを出し分けるために使います。どう表現するかは各チャネルの判断です。
 type Level int
 
 const (
@@ -31,9 +28,8 @@ const (
 
 // String は Level の名前を返します。
 //
-// default に落とさず全ての種別を並べるのは、種別を足したときに
-// ここの追記漏れを exhaustive が拾えるようにするためです。
-// switch の後ろの return は、定数以外の値（数値からの変換など）の受け皿です。
+// default に落とさず全種別を並べるのは、種別を足したときの追記漏れを exhaustive に
+// 拾わせるためです。switch の後ろの return は定数以外の値（数値変換など）の受け皿です。
 func (l Level) String() string {
 	switch l {
 	case LevelNone:
@@ -55,9 +51,8 @@ type Message struct {
 	Title string
 	// Body は通知の本文です。組み立てには Body を使ってください。
 	//
-	// 記法は Body が出力する標準 Markdown です。ここに Slack mrkdwn
-	// （*強調* や <URL|表示テキスト>）を直接書かないでください。
-	// 書いた時点で、その本文は Slack 以外のチャネルへ送れなくなります。
+	// 記法は Body が出力する標準 Markdown です。Slack mrkdwn（*強調* や
+	// <URL|表示テキスト>）を直接書くと、その本文は Slack 以外へ送れなくなります。
 	Body string
 	// Level は結果の種別です。ゼロ値（LevelNone）なら種別未指定として扱われます。
 	//
@@ -81,21 +76,16 @@ func (f NotifierFunc) Notify(ctx context.Context, msg Message) error {
 }
 
 // disabledNotifier は何も送信しない Notifier です。
-// 通知先が設定されていない場合に使用し、呼び出し側にエラーを返しません。
 type disabledNotifier struct{}
 
 // Notify は何もせずに nil を返します。
 func (disabledNotifier) Notify(_ context.Context, _ Message) error { return nil }
 
-// Disabled は通知を行わない Notifier を返します。
-//
-// 通知はアプリケーションの主目的ではなく、宛先が未設定であることは
-// エラーではないため、送信を試みずに常に成功します。
+// Disabled は通知を行わない Notifier を返します。通知はアプリケーションの主目的ではなく、
+// 宛先が未設定であることはエラーではないため、送信を試みずに常に成功します。
 func Disabled() Notifier { return disabledNotifier{} }
 
-// Enabled は n が実際に送信を行う Notifier かどうかを返します。
-// nil および Disabled が返した Notifier に対しては false を返します。
-//
+// Enabled は n が実際に送信を行う Notifier かどうかを返します（nil と Disabled は false）。
 // 本文の組み立てに費用がかかる場合、これで事前に打ち切れます。
 func Enabled(n Notifier) bool {
 	if n == nil {

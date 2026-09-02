@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/rivo/uniseg v0.4.7
-	github.com/shouni/go-http-kit v1.10.0
+	github.com/shouni/go-http-kit v1.11.0
 	github.com/shouni/go-utils v1.7.1
 	github.com/slack-go/slack v0.29.0
 )

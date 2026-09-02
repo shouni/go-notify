@@ -11,9 +11,8 @@ const codeFence = "```"
 
 // Body は通知本文を組み立てるビルダーです。
 //
-// 各メソッドは値が空の場合に何も書き込まないため、呼び出し側は
-// 項目ごとに存在チェックを書く必要がありません。ゼロ値から利用でき、
-// すべてのメソッドはチェーン可能です。
+// 値が空のときは何も書き込まないので、呼び出し側は項目ごとの存在チェックを
+// 書かずに済みます。ゼロ値から使え、すべてのメソッドはチェーン可能です。
 //
 // 出力は特定のチャネルに依存しない標準的な Markdown です
 // （太字は **強調**、リンクは [表示テキスト](URL)）。
@@ -26,7 +25,7 @@ type Body struct {
 // NewBody は空の Body を返します。
 func NewBody() *Body { return &Body{} }
 
-// Text は任意の 1 行を追記します。s が空の場合は何もしません。
+// Text は任意の 1 行を追記します。
 func (b *Body) Text(s string) *Body {
 	if s == "" {
 		return b
@@ -35,9 +34,7 @@ func (b *Body) Text(s string) *Body {
 	return b
 }
 
-// Heading は小見出しの 1 行を追記します。s が空の場合は何もしません。
-// 既に本文がある場合は 1 行空けてから追記します。
-//
+// Heading は小見出しの 1 行を追記します。既に本文があれば 1 行空けます。
 // 項目が多く、意味のまとまりで区切りたい本文のための入口です。
 func (b *Body) Heading(s string) *Body {
 	if s == "" {
@@ -48,10 +45,8 @@ func (b *Body) Heading(s string) *Body {
 	return b
 }
 
-// Bullet は箇条書きの 1 行を追記します。s が空の場合は何もしません。
-//
-// ラベルの付かない値を並べるための入口です。件数が可変のもの
-// （処理したファイル名など）は Field を繰り返すより箇条書きが読みやすくなります。
+// Bullet は箇条書きの 1 行を追記します。
+// 件数が可変のもの（処理したファイル名など）は、Field を繰り返すより読みやすくなります。
 func (b *Body) Bullet(s string) *Body {
 	if s == "" {
 		return b
@@ -60,7 +55,7 @@ func (b *Body) Bullet(s string) *Body {
 	return b
 }
 
-// Field は「**ラベル:** 値」の 1 行を追記します。値が空の場合は何もしません。
+// Field は「**ラベル:** 値」の 1 行を追記します。
 func (b *Body) Field(label, value string) *Body {
 	if value == "" {
 		return b
@@ -69,10 +64,8 @@ func (b *Body) Field(label, value string) *Body {
 	return b
 }
 
-// Code は「**ラベル:** `値`」の 1 行を追記します。値が空の場合は何もしません。
-// 識別子やコマンド名など、等幅で表示したい短い値に使用します。
-//
-// この形に収まらない行は CodeSpan と Field を組み合わせてください。
+// Code は「**ラベル:** `値`」の 1 行を追記します。識別子やコマンド名など、
+// 等幅で表示したい短い値に使います。この形に収まらない行は CodeSpan と Field で組みます。
 func (b *Body) Code(label, value string) *Body {
 	if value == "" {
 		return b
@@ -82,7 +75,7 @@ func (b *Body) Code(label, value string) *Body {
 }
 
 // Link は「**ラベル:** [表示テキスト](URL)」の 1 行を追記します。
-// url が空の場合は何もしません。text が空の場合は url を表示テキストにします。
+// text が空なら url を表示テキストにします。
 func (b *Body) Link(label, url, text string) *Body {
 	if url == "" {
 		return b
@@ -94,12 +87,10 @@ func (b *Body) Link(label, url, text string) *Body {
 	return b
 }
 
-// LinkOrField は、url があればリンクとして、無ければ text をそのまま値として追記します。
-// url と text がどちらも空の場合は何もしません。
+// LinkOrField は、url があればリンクとして、無ければ text を値として追記します。
 //
-// リンク先が任意な項目のための入口です。ストレージ上の成果物のように、
-// 参照先 URL を作れることもあれば URI しか手元に無いこともある項目で、
-// 呼び出し側が毎回同じ分岐を書くのを避けます。
+// ストレージ上の成果物のように、参照先 URL を作れることもあれば URI しか無いことも
+// ある項目で、呼び出し側が毎回同じ分岐を書くのを避けます。
 func (b *Body) LinkOrField(label, url, text string) *Body {
 	if url == "" {
 		return b.Field(label, text)
@@ -107,14 +98,11 @@ func (b *Body) LinkOrField(label, url, text string) *Body {
 	return b.Link(label, url, text)
 }
 
-// URIField は、ストレージ URI の 1 行を追記します。uri が空白のみの場合は何もしません。
+// URIField は、ストレージ URI の 1 行を追記します。
 //
-// gs:// の URI は Cloud Console へのリンクにし、表示は gs:// のまま残します。
-// gs:// はどのチャネルでもただの文字列で、クリックしても何も起きません。一方で
-// 表示まで Console の URL にすると、コピーして gcloud storage 等へそのまま渡せなく
-// なります。gs:// 以外（http(s) の入力ソースなど）は素の値として並びます。
-//
-// 成果物や入力の URI を並べる呼び出し側が、毎回同じ変換と分岐を書くのを避けます。
+// gs:// は Cloud Console へのリンクにしつつ、表示は gs:// のまま残します。リンクが
+// 無いとクリックできず、表示まで Console の URL にすると gcloud へコピーできないためです。
+// gs:// 以外（http(s) の入力ソースなど）は素の値として並びます。
 func (b *Body) URIField(label, uri string) *Body {
 	uri = strings.TrimSpace(uri)
 	return b.LinkOrField(label, gcsConsoleURL(uri), uri)
@@ -138,8 +126,7 @@ func gcsConsoleURL(uri string) string {
 }
 
 // Error は「**ラベル:**」に続けてエラー内容を追記します。
-// err が nil の場合は NotAvailable を表示します。
-// 既に本文がある場合は 1 行空けてから追記します。
+// err が nil なら NotAvailable、既に本文があれば 1 行空けます。
 func (b *Body) Error(label string, err error) *Body {
 	detail := NotAvailable
 	if err != nil {
@@ -151,17 +138,12 @@ func (b *Body) Error(label string, err error) *Body {
 	return b
 }
 
-// Block は「**ラベル:**」に続けてコードブロックを追記します。
-// content が空の場合は NotAvailable を表示します。
-// 既に本文がある場合は 1 行空けてから追記します。
+// Block は「**ラベル:**」に続けてコードブロックを追記します。空なら NotAvailable、
+// 既に本文があれば 1 行空けます。content 中のバックティックは ' に置き換えます
+// （含まれているとコードブロックがそこで閉じるため）。
 //
-// content 中のバックティックは ' に置き換えます。エラー文字列などに
-// バックティックが含まれるとコードブロックがそこで閉じてしまうためです。
-//
-// フェンスは開始・終了とも独立した行に置きます。Markdown ではフェンスの
-// 開始行の残りが言語指定として解釈されるため、```内容``` と 1 行に詰めると
-// content の 1 行目が言語名として食われ、終了フェンスも行頭に無いので
-// ブロックが閉じません。
+// フェンスは開始・終了とも独立した行に置きます。1 行に詰めると開始行の残りが言語指定
+// として食われ、終了フェンスも行頭に無いのでブロックが閉じません。
 func (b *Body) Block(label, content string) *Body {
 	if content == "" {
 		content = NotAvailable
@@ -177,10 +159,8 @@ func (b *Body) Block(label, content string) *Body {
 // Empty は本文がまだ 1 行も書き込まれていないかどうかを返します。
 func (b *Body) Empty() bool { return b.sb.Len() == 0 }
 
-// String は組み立てた本文を返します。
-// 1 行も書き込まれていない場合は NotAvailable を返します。
-// 本文が空の通知は意図された結果ではなく、Slack のセクションブロックも
-// 空文字列を受け付けないためです。
+// String は組み立てた本文を返します。1 行も書き込まれていなければ NotAvailable です
+// （空の通知は意図された結果ではなく、Slack のセクションブロックも空文字を受け付けません）。
 func (b *Body) String() string {
 	if b.Empty() {
 		return NotAvailable
@@ -188,10 +168,8 @@ func (b *Body) String() string {
 	return strings.TrimRight(b.sb.String(), "\n")
 }
 
-// clone は同じ内容を持つ別の Body を返します。
-//
-// 内部バッファをそのまま写します。String() の結果から組み直すと末尾の改行が
-// 落ち、続けて呼ぶ separate() が空行を入れられなくなるためです。
+// clone は同じ内容を持つ別の Body を返します。内部バッファをそのまま写すのは、
+// String() から組み直すと末尾の改行が落ち、separate() が空行を入れられなくなるためです。
 func (b *Body) clone() *Body {
 	c := NewBody()
 	c.sb.WriteString(b.sb.String())
@@ -211,13 +189,12 @@ func (b *Body) separate() {
 	}
 }
 
-// CodeSpan は s をコードスパン（Markdown のインラインコード）記法で包んだ文字列を返します。
-// s が空の場合は空文字を返すため、そのまま Field へ渡せば行ごと省かれます。
+// CodeSpan は s をコードスパン記法で包んだ文字列を返します。s が空なら空文字なので、
+// そのまま Field へ渡せば行ごと省かれます。
 //
-// Code は「ラベル + 単一の値」しか組み立てられないため、単位や絵文字を
-// 添えたい呼び出し側がバックティックを直書きしがちです。しかし本文の Markdown 記法を
-// 知るのは本パッケージだけ、というのがチャネル非依存を成り立たせている境界なので、
-// 記法を書く必要がある場合の出口をここに用意します。
+// Code は「ラベル + 単一の値」しか組めず、単位や絵文字を添えたい呼び出し側が
+// バックティックを直書きしがちです。Markdown 記法を知るのは本パッケージだけ、という
+// 境界がチャネル非依存を支えているので、記法が要る場合の出口をここに置きます。
 //
 //	body.Field("Seed", notify.CodeSpan(strconv.Itoa(seed))+" 🎲")
 //	body.Field("ブランチ", notify.CodeSpan(base)+" ← "+notify.CodeSpan(feature))

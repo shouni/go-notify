@@ -30,7 +30,7 @@ Slack 固有の話（記法の変換・リトライ・制限）は [docs/slack.m
   通知はアプリケーションの主目的ではなく、宛先の未設定で起動を止める理由はありません。
 * **堅牢な通信基盤**
   外部通信はすべて [`go-http-kit`](https://github.com/shouni/go-http-kit) の
-  `httpkit.Requester` 経由です。タイムアウト・SSRF 対策・リトライ方針は
+  `httpkit.Poster` 経由です。タイムアウト・SSRF 対策・リトライ方針は
   渡されたクライアントのものをそのまま使い、本パッケージ自身は
   リトライも `http.Client` も持ちません。
 
