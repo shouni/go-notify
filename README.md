@@ -34,13 +34,9 @@ Slack 固有の話（記法の変換・リトライ・制限）は [docs/slack.m
   渡されたクライアントのものをそのまま使い、本パッケージ自身は
   リトライも `http.Client` も持ちません。
 
-## 📦 インストール
+## 🚦 使い方 (Usage)
 
-```bash
-go get github.com/shouni/go-notify
-```
-
-## 🔧 使い方
+`go get github.com/shouni/go-notify` で入れます。
 
 ### 基本
 
@@ -106,22 +102,11 @@ pipeline.Skipped(ctx, body, reason)         // reason が非 nil なら「理由
 pipeline.WithTitles(notify.Titles{Success: titleFor(cmd)}).Success(ctx, body)
 ```
 
-### Body の出力形式
+### Body の書き味
 
-| メソッド | 出力（Markdown） |
-| :--- | :--- |
-| `Field("Title", "サンプル")` | `**Title:** サンプル` |
-| `Code("Command", "run_task")` | ``**Command:** `run_task` `` |
-| `Link("Detail", url, "job-1")` | `**Detail:** [job-1](url)` |
-| `LinkOrField("Out", url, uri)` | url があれば `Link`、無ければ `Field` と同じ |
-| `URIField("Out", "gs://b/o")` | gs:// は Cloud Console へのリンク（表示は gs:// のまま）、それ以外は `Field` と同じ |
-| `Text("素の行")` | `素の行` |
-| `Heading("生成結果")` | `## 生成結果` |
-| `Bullet("scene_01.png")` | `- scene_01.png` |
-| `Error("エラー内容", err)` | `**エラー内容:**` + 改行 + 内容 |
-| `Block("実行ログ", s)` | `**実行ログ:**` + フェンス付きコードブロック |
-
-値が空の場合は行ごと出力されません。`Error` / `Block` は値が無ければ `N/A` を表示します。
+各メソッドが 1 行ずつ Markdown を書き足します（どのメソッドが何を出すかは godoc）。
+**値が空の場合は行ごと出力されません。**「この項目があれば書く」という `if` を
+項目の数だけ並べずに済むのはこのためです。`Error` / `Block` は値が無ければ `N/A` を表示します。
 1 行も書き込まれなかった `Body` の `String()` は `N/A` を返します。
 `Heading` / `Error` / `Block` は、本文が既にある場合は 1 行空けてから追記します。
 
@@ -164,18 +149,11 @@ body.Field("ブランチ", notify.CodeSpan(base)+" ← "+notify.CodeSpan(feature
 `Message.Level` は結果の種別を運びます。`Pipeline` を使えば自動で設定されるため、
 呼び出し側で指定する必要はありません。
 
-| Level | Pipeline のメソッド |
-| :--- | :--- |
-| `LevelSuccess` | `Success` |
-| `LevelFailure` | `Failure` |
-| `LevelSkipped` | `Skipped` |
-| `LevelNone`（ゼロ値） | — |
-
 どう表現するかは各チャネルの判断です（Slack は attachment の色帯にします）。
 見出しに `✅` `❌` を書いて結果を示す必要はなくなりますが、残しても構いません。
 `Message` を直接組み立てている場合は `LevelNone` のままなので、表示は変わりません。
 
-## 📐 プロジェクト構成
+## 📦 パッケージ構成 (Package Structure)
 
 | パッケージ | 役割 |
 | :--- | :--- |
@@ -185,6 +163,6 @@ body.Field("ブランチ", notify.CodeSpan(base)+" ← "+notify.CodeSpan(feature
 `slack` は `notify` に依存しますが、逆はありません。新しいチャネルを追加する場合は
 `notify.Notifier` を実装したサブパッケージを足すだけで、`notify` 側の変更は不要です。
 
-## 📜 ライセンス
+## 📜 ライセンス (License)
 
 このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
