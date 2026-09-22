@@ -13,7 +13,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/shouni/go-utils/jst"
-	"github.com/slack-go/slack"
 )
 
 const (
@@ -74,22 +73,18 @@ var mrkdwnEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
 
 // buildMessageBlocks は Slack の Block Kit ブロックを構築します。
 // 見出しと本文はそれぞれのブロックの上限に収まるよう切り詰めます。
-func buildMessageBlocks(ctx context.Context, headerText string, message string) ([]slack.Block, error) {
+func buildMessageBlocks(ctx context.Context, headerText string, message string) ([]block, error) {
 	if headerText == "" {
 		return nil, errors.New("通知の見出しが空です")
 	}
 
-	blocks := []slack.Block{
-		slack.NewHeaderBlock(
-			slack.NewTextBlockObject("plain_text", truncateHeaderText(ctx, headerText), true, false),
-		),
-		slack.NewDividerBlock(),
+	blocks := []block{
+		headerBlock(truncateHeaderText(ctx, headerText)),
+		dividerBlock(),
 	}
 
 	for _, sectionText := range buildSectionTexts(ctx, message) {
-		blocks = append(blocks, slack.NewSectionBlock(
-			slack.NewTextBlockObject("mrkdwn", sectionText, false, false), nil, nil),
-		)
+		blocks = append(blocks, sectionBlock(sectionText))
 	}
 
 	blocks = append(blocks, buildFooterBlock())
@@ -339,9 +334,6 @@ func closeUnterminatedFence(message string) string {
 }
 
 // buildFooterBlock は送信時刻を表示する Slack コンテキストブロックを構築します。
-func buildFooterBlock() *slack.ContextBlock {
-	return slack.NewContextBlock(
-		"notification-context",
-		slack.NewTextBlockObject("mrkdwn", "送信時刻: "+jst.FormatTimestamp(jst.Now()), false, false),
-	)
+func buildFooterBlock() block {
+	return contextBlock("notification-context", "送信時刻: "+jst.FormatTimestamp(jst.Now()))
 }

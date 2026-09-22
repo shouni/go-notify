@@ -8,7 +8,6 @@ import (
 
 	"github.com/shouni/go-http-kit/httpkit"
 	"github.com/shouni/go-notify/notify"
-	"github.com/slack-go/slack"
 )
 
 // levelColors は結果の種別を Slack の attachment の色に対応させます。
@@ -105,13 +104,13 @@ func (e *sendError) Unwrap() error { return e.cause }
 //
 // 色が対応する種別だけ attachment に包みます。attachment は左端に色帯が付く代わりに本文が
 // 内側へ寄るため、種別が未指定の通知の見た目を変えないよう LevelNone は blocks のままです。
-func (n *notifier) buildWebhookMessage(ctx context.Context, msg notify.Message) (slack.WebhookMessage, error) {
+func (n *notifier) buildWebhookMessage(ctx context.Context, msg notify.Message) (webhookMessage, error) {
 	blocks, err := buildMessageBlocks(ctx, msg.Title, msg.Body)
 	if err != nil {
-		return slack.WebhookMessage{}, fmt.Errorf("slack Block Kitの構築に失敗しました: %w", err)
+		return webhookMessage{}, fmt.Errorf("slack Block Kitの構築に失敗しました: %w", err)
 	}
 
-	var payload slack.WebhookMessage
+	var payload webhookMessage
 
 	// 表に無い種別（数値からの変換など）は空文字になり、LevelNone と同じ扱いになります。
 	color := levelColors[msg.Level]
@@ -119,7 +118,7 @@ func (n *notifier) buildWebhookMessage(ctx context.Context, msg notify.Message) 
 		// トップレベルの blocks がある場合、Text は本文として描画されず
 		// プッシュ通知などのフォールバックにだけ使われます。
 		payload.Text = msg.Title
-		payload.Blocks = &slack.Blocks{BlockSet: blocks}
+		payload.Blocks = blocks
 		return payload, nil
 	}
 
@@ -128,10 +127,10 @@ func (n *notifier) buildWebhookMessage(ctx context.Context, msg notify.Message) 
 	// attachment 内の見出しブロックと合わせて見出しが 2 回出ます。
 	// フォールバックの役目は Attachment.Fallback が引き継ぐので、
 	// プッシュ通知の文言は失われません。
-	payload.Attachments = []slack.Attachment{{
+	payload.Attachments = []attachment{{
 		Color:    color,
 		Fallback: msg.Title,
-		Blocks:   slack.Blocks{BlockSet: blocks},
+		Blocks:   blocks,
 	}}
 	return payload, nil
 }
