@@ -3,6 +3,7 @@ package slack
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // TestFormatMarkdownConversions は Markdown → mrkdwn の基本変換を検証します。
@@ -183,20 +184,20 @@ func TestFormatMarkdownUnterminatedFenceIsNotProtected(t *testing.T) {
 	}
 }
 
-// TestBuildSectionText は、本文全体が mrkdwn に変換されることを検証します。
-func TestBuildSectionText(t *testing.T) {
-	got := buildSectionText(t.Context(), "## 見出し\n**重要**\n- item")
-	want := "*見出し*\n*重要*\n• item"
+// TestBuildSectionTexts は、本文全体が mrkdwn に変換されることを検証します。
+func TestBuildSectionTexts(t *testing.T) {
+	got := buildSectionTexts(t.Context(), "## 見出し\n**重要**\n- item")
+	want := []string{"*見出し*\n*重要*\n• item"}
 
-	if got != want {
-		t.Errorf("buildSectionText() = %q, want %q", got, want)
+	if len(got) != 1 || got[0] != want[0] {
+		t.Errorf("buildSectionTexts() = %q, want %q", got, want)
 	}
 }
 
-// TestBuildSectionTextEmpty は、空白のみの本文がセクションを生まないことを検証します。
-func TestBuildSectionTextEmpty(t *testing.T) {
-	if got := buildSectionText(t.Context(), "   \n  "); got != "" {
-		t.Errorf("buildSectionText() = %q, want empty", got)
+// TestBuildSectionTextsEmpty は、空白のみの本文がセクションを生まないことを検証します。
+func TestBuildSectionTextsEmpty(t *testing.T) {
+	if got := buildSectionTexts(t.Context(), "   \n  "); len(got) != 0 {
+		t.Errorf("buildSectionTexts() = %q, want none", got)
 	}
 }
 
@@ -245,5 +246,87 @@ func TestTruncateHeaderText(t *testing.T) {
 	short := "✅ 完了しました"
 	if got := truncateHeaderText(t.Context(), short); got != short {
 		t.Errorf("truncateHeaderText() = %q, want %q", got, short)
+	}
+}
+
+// TestSplitSectionTextKeepsLinksIntact は、上限を超える本文が行の境界で複数ブロックに
+// 分かれ、リンクの markup が途中で切れないことを検証します。署名付き URL は 1 本で
+// 860 文字あり、3 本並べると 1 ブロックの上限を超えて最後のリンクが崩れていました。
+func TestSplitSectionTextKeepsLinksIntact(t *testing.T) {
+	link := func(n int) string {
+		return "<https://storage.googleapis.com/b/" + strings.Repeat("x", 1000) + "?sig=" + strings.Repeat("a", 40) + "|link" + string(rune('0'+n)) + ">"
+	}
+	body := "*Result:* " + link(1) + "\n*Master:* " + link(2) + "\n*Recipe:* " + link(3) + "\n*Audio Check:* ok"
+
+	chunks := splitSectionText(body)
+	if len(chunks) < 2 {
+		t.Fatalf("chunks = %d, want the body split across blocks", len(chunks))
+	}
+	joined := strings.Join(chunks, "\n")
+	if joined != body {
+		t.Errorf("splitting lost or altered content:\n got %q\nwant %q", joined, body)
+	}
+	for i, c := range chunks {
+		if n := utf8.RuneCountInString(c); n > maxSectionLength {
+			t.Errorf("chunk %d has %d runes, want <= %d", i, n, maxSectionLength)
+		}
+		if strings.Count(c, "<") != strings.Count(c, ">") {
+			t.Errorf("chunk %d cuts a link: %q", i, c)
+		}
+	}
+}
+
+// TestSplitSectionTextClosesAndReopensFence は、コードブロックの途中で区切るときに
+// 前のブロックを閉じ、次のブロックを開き直すことを検証します。
+func TestSplitSectionTextClosesAndReopensFence(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString("before\n" + codeFence + "\n")
+	for range 200 {
+		sb.WriteString(strings.Repeat("y", 40) + "\n")
+	}
+	sb.WriteString(codeFence + "\nafter")
+
+	chunks := splitSectionText(sb.String())
+	if len(chunks) < 2 {
+		t.Fatalf("chunks = %d, want the block split", len(chunks))
+	}
+	for i, c := range chunks {
+		if strings.Count(c, codeFence)%2 != 0 {
+			t.Errorf("chunk %d has an unbalanced fence: starts %q ends %q", i, c[:min(20, len(c))], c[max(0, len(c)-20):])
+		}
+		if n := utf8.RuneCountInString(c); n > maxSectionLength {
+			t.Errorf("chunk %d has %d runes, want <= %d", i, n, maxSectionLength)
+		}
+	}
+	if !strings.HasSuffix(chunks[len(chunks)-1], "after") {
+		t.Errorf("text after the block was lost: %q", chunks[len(chunks)-1])
+	}
+}
+
+// TestSplitLongLineBreaksOutsideLinks は、1 行が上限を超えるときに空白で分けつつ
+// <...> の内側では分けないことを検証します。
+func TestSplitLongLineBreaksOutsideLinks(t *testing.T) {
+	line := "a <https://x/" + strings.Repeat("p", 30) + " q|t> b " + strings.Repeat("c", 20)
+	pieces := splitLongLine(line, 40)
+	if strings.Join(pieces, " ") != line {
+		t.Errorf("pieces = %q, joined differs from input", pieces)
+	}
+	for _, p := range pieces {
+		if strings.Count(p, "<") != strings.Count(p, ">") {
+			t.Errorf("piece cuts a link: %q", p)
+		}
+	}
+}
+
+// TestBuildSectionTextsCapsBlocks は、分割しても収まらない本文は最後のブロックを
+// 切り詰めることを検証します。Slack の 50 ブロック上限を超えると通知が丸ごと失われます。
+func TestBuildSectionTextsCapsBlocks(t *testing.T) {
+	body := strings.Repeat(strings.Repeat("z", 100)+"\n", maxSectionBlocks*40)
+	got := buildSectionTexts(t.Context(), body)
+	if len(got) != maxSectionBlocks {
+		t.Errorf("blocks = %d, want %d", len(got), maxSectionBlocks)
+	}
+	if !strings.Contains(got[len(got)-1], "省略されました") {
+		t.Errorf("last block lacks the truncation note: %q", got[len(got)-1][len(got[len(got)-1])-60:])
 	}
 }
