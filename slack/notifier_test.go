@@ -3,7 +3,9 @@ package slack_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -276,6 +278,43 @@ func TestNotifyPropagatesSendError(t *testing.T) {
 
 	if err := n.Notify(context.Background(), notify.Message{Title: "件名", Body: "本文"}); err == nil {
 		t.Error("Notify() = nil, want error")
+	}
+}
+
+// TestNotifyRedactsWebhookURLInSendError は、送信失敗の文面に Webhook URL が載らないことを
+// 検証します。URL はそれ自体が投稿の認可で、HTTP クライアントは失敗の文面に宛先を含め、
+// 呼び出し側はそのエラーをそのままログに出します。原因の判定（errors.Is）は伏せた後も
+// 効かなければなりません。
+func TestNotifyRedactsWebhookURLInSendError(t *testing.T) {
+	const webhookURL = "https://hooks.slack.com/services/T000/B000/SECRETTOKEN"
+	cause := errors.New("connection refused")
+	// httpkit と net/http が返す形。文面の 2 箇所に URL が入る。
+	stub := &stubPoster{fail: fmt.Errorf("HTTPリクエスト失敗 (URL: %s): %w",
+		webhookURL, &url.Error{Op: "Post", URL: webhookURL, Err: cause})}
+	n, err := slack.NewNotifier(stub, webhookURL)
+	if err != nil {
+		t.Fatalf("NewNotifier() = %v, want nil", err)
+	}
+
+	err = n.Notify(context.Background(), notify.Message{Title: "件名", Body: "本文"})
+	if err == nil {
+		t.Fatal("Notify() = nil, want error")
+	}
+	if strings.Contains(err.Error(), "SECRETTOKEN") {
+		t.Errorf("Notify() error leaks the webhook URL: %v", err)
+	}
+	if !strings.Contains(err.Error(), "<webhook URL>") {
+		t.Errorf("Notify() error does not mark the redacted URL: %v", err)
+	}
+	if !strings.Contains(err.Error(), "connection refused") {
+		t.Errorf("Notify() error lost the cause: %v", err)
+	}
+	if !errors.Is(err, cause) {
+		t.Errorf("errors.Is(err, cause) = false; Unwrap must return the original error")
+	}
+	var urlErr *url.Error
+	if !errors.As(err, &urlErr) {
+		t.Errorf("errors.As(err, *url.Error) = false; Unwrap must return the original error")
 	}
 }
 

@@ -71,11 +71,35 @@ func (n *notifier) Notify(ctx context.Context, msg notify.Message) error {
 	}
 
 	if _, err := n.client.PostJSON(ctx, n.webhookURL, payload); err != nil {
-		return fmt.Errorf("slack Webhookメッセージの送信に失敗しました: %w", err)
+		return &sendError{webhookURL: n.webhookURL, cause: err}
 	}
 
 	return nil
 }
+
+// redactedWebhookURL は、エラー文の中で Webhook URL の代わりに出す文字列です。
+const redactedWebhookURL = "<webhook URL>"
+
+// sendError は送信の失敗を、Webhook URL を伏せた文面で表します。
+//
+// Incoming Webhook の URL はそれ自体が投稿の認可なので、秘密として扱います。しかし
+// HTTP クライアントは失敗の文面に宛先を含めます（net/http の *url.Error と、httpkit の
+// 「HTTPリクエスト失敗 (URL: …)」の両方）。呼び出し側はこのエラーをそのままログに
+// 出すので、ここで伏せておかないと秘密がログ基盤に残ります。
+//
+// Unwrap は元のエラーを返すため、errors.Is / errors.As による原因の判定はそのまま効きます。
+// 伏せるのは Error() の文面だけです。
+type sendError struct {
+	webhookURL string
+	cause      error
+}
+
+func (e *sendError) Error() string {
+	return "slack Webhookメッセージの送信に失敗しました: " +
+		strings.ReplaceAll(e.cause.Error(), e.webhookURL, redactedWebhookURL)
+}
+
+func (e *sendError) Unwrap() error { return e.cause }
 
 // buildWebhookMessage は Slack Incoming Webhook に送信するペイロードを構築します。
 //
