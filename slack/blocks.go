@@ -19,6 +19,10 @@ import (
 const (
 	// maxHeaderLength は Slack ヘッダーブロックの最大文字数です。Slack の上限そのものです。
 	maxHeaderLength = 150
+	// maxSectionBlocks は本文を分割して並べるセクションブロックの上限数です。
+	// Slack はメッセージ 1 件につき 50 ブロックまでで、見出し・区切り・フッターに
+	// 3 つ使います。通知として読める長さの上限でもあるので、余裕を持って抑えます。
+	maxSectionBlocks = 20
 	// maxSectionLength は Slack セクションブロックの最大文字数です。
 	// Slack の上限 3000 の手前に余裕を取っています。
 	maxSectionLength = 2900
@@ -82,8 +86,7 @@ func buildMessageBlocks(ctx context.Context, headerText string, message string) 
 		slack.NewDividerBlock(),
 	}
 
-	sectionText := buildSectionText(ctx, message)
-	if sectionText != "" {
+	for _, sectionText := range buildSectionTexts(ctx, message) {
 		blocks = append(blocks, slack.NewSectionBlock(
 			slack.NewTextBlockObject("mrkdwn", sectionText, false, false), nil, nil),
 		)
@@ -94,13 +97,148 @@ func buildMessageBlocks(ctx context.Context, headerText string, message string) 
 	return blocks, nil
 }
 
-// buildSectionText は本文を Slack セクションブロック用の mrkdwn 文字列に変換します。
-func buildSectionText(ctx context.Context, message string) string {
+// buildSectionTexts は本文を Slack セクションブロック用の mrkdwn 文字列に変換し、
+// 1 ブロックの上限に収まるよう行の境界で分割します。空の本文は 0 個です。
+//
+// 切り詰めではなく分割するのは、切った位置がリンクの途中だと markup ごと壊れるためです
+// （署名付き URL は 1 本で 860 文字あり、3 本並べただけで上限を超えて最後のリンクが
+// 崩れていました）。分割しても maxSectionBlocks に収まらないときだけ、最後のブロックを
+// 切り詰めます。
+func buildSectionTexts(ctx context.Context, message string) []string {
 	if strings.TrimSpace(message) == "" {
-		return ""
+		return nil
 	}
 
-	return truncateSectionText(ctx, formatMarkdown(message))
+	chunks := splitSectionText(formatMarkdown(message))
+	if len(chunks) <= maxSectionBlocks {
+		return chunks
+	}
+
+	slog.WarnContext(ctx, "The notification message is too long even when split, truncating.",
+		"blocks", len(chunks),
+		"max_blocks", maxSectionBlocks)
+	chunks = chunks[:maxSectionBlocks]
+	last := &chunks[len(chunks)-1]
+	// 最後のブロックは上限以内なので、省略の注記ぶんだけ空けてから注記を必ず付けます。
+	// フェンスは注記より前で閉じます（注記がコードブロックの中に入らないように）。
+	room := maxSectionLength - utf8.RuneCountInString(truncationSuffix) - fenceReserve
+	*last = closeUnterminatedFence(truncateGraphemes(*last, room, "")) + truncationSuffix
+	return chunks
+}
+
+// fenceReserve は、コードブロックの途中で区切るときに閉じフェンスのために空けておく文字数です。
+const fenceReserve = len("\n" + codeFence)
+
+// splitSectionText は mrkdwn の本文を、各要素が maxSectionLength 以内になるよう
+// 行の境界で分割します。コードブロックの途中で区切るときは、前の要素を閉じフェンスで
+// 閉じ、次の要素を開きフェンスで始めます。1 行が上限を超えるときは空白で分けます。
+func splitSectionText(message string) []string {
+	if utf8.RuneCountInString(message) <= maxSectionLength {
+		return []string{message}
+	}
+
+	var (
+		chunks  []string
+		cur     strings.Builder
+		curLen  int
+		inFence bool
+	)
+	flush := func() {
+		text := cur.String()
+		cur.Reset()
+		curLen = 0
+		if inFence {
+			text += "\n" + codeFence
+			cur.WriteString(codeFence)
+			curLen = utf8.RuneCountInString(codeFence)
+		}
+		chunks = append(chunks, text)
+	}
+
+	for line := range strings.SplitSeq(message, "\n") {
+		for _, piece := range splitLongLine(line, maxSectionLength-fenceReserve-utf8.RuneCountInString(codeFence)) {
+			pieceLen := utf8.RuneCountInString(piece)
+			sep := 0
+			if curLen > 0 {
+				sep = 1
+			}
+			reserve := 0
+			if inFence || isFenceLine(piece) {
+				reserve = fenceReserve
+			}
+			if curLen > 0 && curLen+sep+pieceLen+reserve > maxSectionLength {
+				flush()
+				sep = 0
+				if curLen > 0 {
+					sep = 1
+				}
+			}
+			if sep == 1 {
+				cur.WriteByte('\n')
+			}
+			cur.WriteString(piece)
+			curLen += sep + pieceLen
+			if isFenceLine(piece) {
+				inFence = !inFence
+			}
+		}
+	}
+	if cur.Len() > 0 {
+		chunks = append(chunks, cur.String())
+	}
+	return chunks
+}
+
+// isFenceLine は、行がコードブロックの開き・閉じフェンスかを返します。
+func isFenceLine(line string) bool {
+	return strings.HasPrefix(strings.TrimSpace(line), codeFence)
+}
+
+// splitLongLine は、1 行が maxLen を超えるときに空白の位置で分けます。
+// リンク構文 <...> の内側では分けません。分けられる空白が無ければ、そのまま返します
+// （その場合は 1 ブロックに 1 行だけが入り、Slack 側の上限で切れます）。
+func splitLongLine(line string, maxLen int) []string {
+	if utf8.RuneCountInString(line) <= maxLen {
+		return []string{line}
+	}
+
+	var pieces []string
+	for utf8.RuneCountInString(line) > maxLen {
+		cut := lastBreakableSpace(line, maxLen)
+		if cut <= 0 {
+			break
+		}
+		pieces = append(pieces, strings.TrimRight(line[:cut], " "))
+		line = strings.TrimLeft(line[cut:], " ")
+	}
+	return append(pieces, line)
+}
+
+// lastBreakableSpace は、先頭から maxLen 文字以内にある最後の空白のバイト位置を返します。
+// <...> の内側にある空白は候補にしません。無ければ -1 です。
+func lastBreakableSpace(line string, maxLen int) int {
+	cut := -1
+	depth := 0
+	runes := 0
+	for i, r := range line {
+		if runes >= maxLen {
+			break
+		}
+		runes++
+		switch r {
+		case '<':
+			depth++
+		case '>':
+			if depth > 0 {
+				depth--
+			}
+		case ' ':
+			if depth == 0 {
+				cut = i
+			}
+		}
+	}
+	return cut
 }
 
 // formatMarkdown は一般的な Markdown 記法の一部を Slack mrkdwn に変換します。
