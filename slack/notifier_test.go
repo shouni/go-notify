@@ -2,6 +2,7 @@ package slack_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,19 +13,44 @@ import (
 	"github.com/shouni/go-http-kit/httpkit"
 	"github.com/shouni/go-notify/notify"
 	"github.com/shouni/go-notify/slack"
-	slackgo "github.com/slack-go/slack"
 )
+
+// sentMessage は、送信されたペイロードを Slack が受け取る JSON の形で読み直したものです。
+// ライブラリ内部の型ではなく wire の形で検査するので、型を差し替えてもテストは変わりません。
+type sentMessage struct {
+	Text        string `json:"text"`
+	Attachments []struct {
+		Color    string      `json:"color"`
+		Fallback string      `json:"fallback"`
+		Blocks   []sentBlock `json:"blocks"`
+	} `json:"attachments"`
+	Blocks []sentBlock `json:"blocks"`
+}
+
+type sentBlock struct {
+	Type string `json:"type"`
+	Text *struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"text"`
+}
 
 // stubPoster は送信ペイロードを記録する httpkit.Poster のスタブです。
 type stubPoster struct {
-	sent slackgo.WebhookMessage
+	sent sentMessage
+	raw  []byte
 	fail error
 }
 
-// PostJSON は送信された WebhookMessage を記録します。
+// PostJSON は送信されたペイロードを JSON に直してから記録します。
 func (s *stubPoster) PostJSON(_ context.Context, _ string, data any) (*httpkit.Result, error) {
-	if msg, ok := data.(slackgo.WebhookMessage); ok {
-		s.sent = msg
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	s.raw = raw
+	if err := json.Unmarshal(raw, &s.sent); err != nil {
+		return nil, err
 	}
 	if s.fail != nil {
 		return nil, s.fail
@@ -38,13 +64,13 @@ func (s *stubPoster) Post(_ context.Context, _, _ string, _ []byte) (*httpkit.Re
 
 // blockSet は送信済みメッセージのブロック一式を返します。
 // 種別付きの通知は attachment に包まれるため、両方の置き場所を見ます。
-func (s *stubPoster) blockSet(t *testing.T) []slackgo.Block {
+func (s *stubPoster) blockSet(t *testing.T) []sentBlock {
 	t.Helper()
-	if s.sent.Blocks != nil {
-		return s.sent.Blocks.BlockSet
+	if len(s.sent.Blocks) > 0 {
+		return s.sent.Blocks
 	}
 	if len(s.sent.Attachments) == 1 {
-		return s.sent.Attachments[0].Blocks.BlockSet
+		return s.sent.Attachments[0].Blocks
 	}
 	t.Fatal("Blocks も Attachments も設定されていません")
 	return nil
@@ -54,20 +80,20 @@ func (s *stubPoster) blockSet(t *testing.T) []slackgo.Block {
 func (s *stubPoster) headerText(t *testing.T) string {
 	t.Helper()
 	for _, b := range s.blockSet(t) {
-		if header, ok := b.(*slackgo.HeaderBlock); ok && header.Text != nil {
-			return header.Text.Text
+		if b.Type == "header" && b.Text != nil {
+			return b.Text.Text
 		}
 	}
 	t.Fatal("ヘッダーブロックが見つかりません")
 	return ""
 }
 
-// sectionText は送信済みメッセージのセクションブロック本文を返します。
+// sectionText は送信済みメッセージの最初のセクションブロック本文を返します。
 func (s *stubPoster) sectionText(t *testing.T) string {
 	t.Helper()
 	for _, b := range s.blockSet(t) {
-		if section, ok := b.(*slackgo.SectionBlock); ok && section.Text != nil {
-			return section.Text.Text
+		if b.Type == "section" && b.Text != nil {
+			return b.Text.Text
 		}
 	}
 	t.Fatal("セクションブロックが見つかりません")
@@ -210,7 +236,7 @@ func TestNotifyLevelSetsAttachmentColor(t *testing.T) {
 			if got := stub.sent.Attachments[0].Color; got != tt.want {
 				t.Errorf("Color = %q, want %q", got, tt.want)
 			}
-			if stub.sent.Blocks != nil {
+			if len(stub.sent.Blocks) > 0 {
 				t.Error("attachment 使用時にトップレベル Blocks が設定されています")
 			}
 		})
@@ -263,7 +289,7 @@ func TestNotifyWithoutLevelKeepsTopLevelBlocks(t *testing.T) {
 	if len(stub.sent.Attachments) != 0 {
 		t.Errorf("attachment 数 = %d, want 0", len(stub.sent.Attachments))
 	}
-	if stub.sent.Blocks == nil {
+	if len(stub.sent.Blocks) == 0 {
 		t.Error("トップレベル Blocks が設定されていません")
 	}
 }
