@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/rivo/uniseg"
 	"github.com/shouni/go-utils/jst"
 )
 
@@ -124,6 +125,14 @@ func buildSectionTexts(ctx context.Context, message string) []string {
 // fenceReserve は、コードブロックの途中で区切るときに閉じフェンスのために空けておく文字数です。
 const fenceReserve = len("\n" + codeFence)
 
+// maxPieceLength は、1 行を分けるときの 1 片の上限です。
+//
+// フェンスの途中で区切ると、そのブロックは「開きフェンス + 改行 + 本文 + 改行 + 閉じフェンス」
+// になります。予算から引くのは閉じ側（fenceReserve）だけでは足りず、再開する開きフェンスと
+// その直後の改行も要ります。ここを 1 文字でも見誤ると、上限を超えたブロックが送られて
+// Slack が invalid_blocks を返し、通知が丸ごと失われます。
+const maxPieceLength = maxSectionLength - 2*fenceReserve
+
 // splitSectionText は mrkdwn の本文を、各要素が maxSectionLength 以内になるよう
 // 行の境界で分割します。コードブロックの途中で区切るときは、前の要素を閉じフェンスで
 // 閉じ、次の要素を開きフェンスで始めます。1 行が上限を超えるときは空白で分けます。
@@ -151,7 +160,7 @@ func splitSectionText(message string) []string {
 	}
 
 	for line := range strings.SplitSeq(message, "\n") {
-		for _, piece := range splitLongLine(line, maxSectionLength-fenceReserve-utf8.RuneCountInString(codeFence)) {
+		for _, piece := range splitLongLine(line, maxPieceLength) {
 			pieceLen := utf8.RuneCountInString(piece)
 			sep := 0
 			if curLen > 0 {
@@ -189,9 +198,16 @@ func isFenceLine(line string) bool {
 	return strings.HasPrefix(strings.TrimSpace(line), codeFence)
 }
 
-// splitLongLine は、1 行が maxLen を超えるときに空白の位置で分けます。
-// リンク構文 <...> の内側では分けません。分けられる空白が無ければ、そのまま返します
-// （その場合は 1 ブロックに 1 行だけが入り、Slack 側の上限で切れます）。
+// splitLongLine は、1 行が maxLen を超えるときに分けます。
+//
+// 切る位置は、空白 → リンクの外側の任意の位置、の順に探します。空白を優先するのは
+// 語の途中で切らないためですが、**日本語は単語間に空白を置かない**ので、空白が無いのは
+// 例外ではなく通常です。そこで諦めると上限を超えたブロックがそのまま送られ、Slack が
+// invalid_blocks を返して通知が丸ごと失われます（見出しの切り詰めと同じ失敗の形です）。
+//
+// リンク構文 <...> の内側は避けますが、窓が丸ごとリンクの内側なら割ってでも切ります。
+// 壊れたリンクが 1 本出るのは、上限超えで通知が丸ごと消えるより軽い失敗だからです
+// （署名付き URL は 900 文字程度なので、実際にここへ来るのは異常な入力だけです）。
 func splitLongLine(line string, maxLen int) []string {
 	if utf8.RuneCountInString(line) <= maxLen {
 		return []string{line}
@@ -201,12 +217,59 @@ func splitLongLine(line string, maxLen int) []string {
 	for utf8.RuneCountInString(line) > maxLen {
 		cut := lastBreakableSpace(line, maxLen)
 		if cut <= 0 {
-			break
+			// 空白が無いので境界で切る。リンクの外側を優先し、窓が丸ごとリンクの
+			// 内側ならリンクを割ってでも切る。
+			outside, anywhere := lastBreaks(line, maxLen)
+			if cut = outside; cut <= 0 {
+				cut = anywhere
+			}
+			if cut <= 0 {
+				break // 1 クラスタが上限を超えている。これ以上は分けられない。
+			}
+			pieces = append(pieces, line[:cut])
+			line = line[cut:]
+			continue
 		}
 		pieces = append(pieces, strings.TrimRight(line[:cut], " "))
 		line = strings.TrimLeft(line[cut:], " ")
 	}
 	return append(pieces, line)
+}
+
+// lastBreaks は、先頭から maxLen 文字以内にある最後の書記素クラスタ境界を 2 つ返します。
+// outside はリンク構文 <...> の外側にあるもの（無ければ -1）、anywhere は位置を問わない
+// 最後のものです。どちらもバイト位置です。
+//
+// 書記素クラスタの境界を選ぶのは、結合文字や ZWJ 絵文字を分断しないためです
+// （truncateGraphemes と同じ理由）。数えるのはルーンです。上限の判定が
+// utf8.RuneCountInString である以上、ここだけクラスタで数えると、1 クラスタが
+// 複数ルーンになる入力（結合文字列や不正な UTF-8）で上限を 1 文字超えます。
+func lastBreaks(line string, maxLen int) (outside, anywhere int) {
+	outside, anywhere = -1, -1
+	depth, runes, offset := 0, 0, 0
+	rest, state := line, -1
+	for rest != "" {
+		var cluster string
+		cluster, rest, _, state = uniseg.FirstGraphemeClusterInString(rest, state)
+		if runes+utf8.RuneCountInString(cluster) > maxLen {
+			break
+		}
+		switch cluster {
+		case "<":
+			depth++
+		case ">":
+			if depth > 0 {
+				depth--
+			}
+		}
+		runes += utf8.RuneCountInString(cluster)
+		offset += len(cluster)
+		anywhere = offset
+		if depth == 0 {
+			outside = offset
+		}
+	}
+	return outside, anywhere
 }
 
 // lastBreakableSpace は、先頭から maxLen 文字以内にある最後の空白のバイト位置を返します。

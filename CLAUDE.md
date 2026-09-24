@@ -116,6 +116,14 @@ Truncation measures in runes (`utf8.RuneCountInString`) but cuts in grapheme clu
 
 `truncateSectionText` closes an unterminated fence afterwards. `Body.Block` is the method that carries long content, so it is the one truncation lands inside, and a fence left open breaks the rest of the rendering.
 
+**Both halves are fuzzed** (`FuzzFormatMarkdown`, `FuzzSplitSectionText`, 60s each in CI). They found three real defects that the table tests missed, all of the same shape — an oversized section block, which Slack answers with `invalid_blocks`, losing the whole notification:
+
+1. A line with no breakable space was returned whole. **Japanese has no spaces between words**, so this was the normal case for this fleet's notifications, not an edge case.
+2. `maxPieceLength` was one character short of correct: splitting inside a fence costs `"```" + "\n"` to reopen *and* `"\n" + "```"` to close, so the budget has to drop `2*fenceReserve`, not `fenceReserve + len(codeFence)`.
+3. A single link longer than the limit was kept intact and overflowed. **That trade was wrong**: a broken link is a worse-looking message, an oversized block is no message at all. `splitLongLine` now cuts inside `<...>` as a last resort.
+
+Two counting rules follow from that and are easy to regress: the limit is checked in runes (`utf8.RuneCountInString`), so any code choosing a cut position must budget in runes too even while stepping by grapheme cluster (`lastBreaks`) — a cluster can be several runes, and combining marks or invalid UTF-8 then push a chunk one over. And the fuzz target asserts only that splitting does not *introduce* a fence imbalance; fixing input that arrived unbalanced is not the splitter's job.
+
 **The body is split, not truncated, and the split respects links and fences.** A single section used to be cut at 2900 runes after mrkdwn conversion, so a cut inside `<url|text>` broke the markup — a GCS signed URL is ~860 characters and three of them on a success notice crossed the limit, which is why ap-music dropped to one link. `splitSectionText` breaks at line boundaries; an overlong line breaks at a space outside `<...>` (`splitLongLine` / `lastBreakableSpace`); crossing a fence closes it at the end of one block and reopens it at the start of the next (`fenceReserve` keeps room for that). Only when the body still exceeds `maxSectionBlocks` (20 — Slack allows 50 per message, header/divider/footer take 3) is the last block truncated with the note, fence closed *before* the note so the note is not swallowed by the code block. `TestSplitSectionTextKeepsLinksIntact` and `TestSplitSectionTextClosesAndReopensFence` pin the two invariants.
 
 Config comes from the environment at the call site, never inside the package. `SLACK_WEBHOOK_URL` is the whole of it.

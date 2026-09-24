@@ -303,17 +303,40 @@ func TestSplitSectionTextClosesAndReopensFence(t *testing.T) {
 	}
 }
 
-// TestSplitLongLineBreaksOutsideLinks は、1 行が上限を超えるときに空白で分けつつ
-// <...> の内側では分けないことを検証します。
+// TestSplitLongLineBreaksOutsideLinks は、上限に収まるリンクを割らずに分けることを
+// 検証します。切る位置は空白を優先し、<...> の内側は避けます。
 func TestSplitLongLineBreaksOutsideLinks(t *testing.T) {
-	line := "a <https://x/" + strings.Repeat("p", 30) + " q|t> b " + strings.Repeat("c", 20)
+	line := "a <https://x/" + strings.Repeat("p", 20) + "|t> b " + strings.Repeat("c", 30)
 	pieces := splitLongLine(line, 40)
+
 	if strings.Join(pieces, " ") != line {
 		t.Errorf("pieces = %q, joined differs from input", pieces)
 	}
 	for _, p := range pieces {
 		if strings.Count(p, "<") != strings.Count(p, ">") {
-			t.Errorf("piece cuts a link: %q", p)
+			t.Errorf("piece cuts a link that would have fit: %q", p)
+		}
+	}
+}
+
+// TestSplitLongLineCutsAnOversizedLink は、1 本で上限を超えるリンクは割ってでも切ることを
+// 検証します。
+//
+// リンクを守って上限超えのブロックを返すと、Slack が invalid_blocks を返して通知が丸ごと
+// 失われます。壊れたリンクが 1 本出るほうが軽い失敗です。署名付き URL は 900 文字程度なので、
+// ここへ来るのは異常な入力だけですが、そのときに通知ごと消えてよい理由にはなりません。
+func TestSplitLongLineCutsAnOversizedLink(t *testing.T) {
+	const maxLen = 40
+	line := "<https://x/" + strings.Repeat("p", 100) + "|t>"
+
+	pieces := splitLongLine(line, maxLen)
+
+	if strings.Join(pieces, "") != line {
+		t.Errorf("pieces = %q, joined differs from input", pieces)
+	}
+	for i, p := range pieces {
+		if n := utf8.RuneCountInString(p); n > maxLen {
+			t.Errorf("piece %d has %d runes, over the %d limit", i, n, maxLen)
 		}
 	}
 }
