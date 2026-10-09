@@ -1,9 +1,9 @@
-github.com/cenkalti/backoff/v7 v7.0.0 h1:ZP+QAaaOnVUHo+ufFpZ835hbT3x2fy+h2lecVEosZ6A=
-github.com/cenkalti/backoff/v7 v7.0.0/go.mod h1:qcKBGwsu4hpxHtQ8tWYsQ+ifzx2+sS+Xx/3jfe30lI8=
+github.com/cenkalti/backoff/v7 v7.0.1 h1:+ulHti5s1d9QnfyOnLWVmQ/SaZ+TJQF9OdOI0i9BGZI=
+github.com/cenkalti/backoff/v7 v7.0.1/go.mod h1:qcKBGwsu4hpxHtQ8tWYsQ+ifzx2+sS+Xx/3jfe30lI8=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 github.com/rivo/uniseg v0.4.7/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
-github.com/shouni/go-http-kit v1.13.0 h1:VEf+ctSYuvVCRHXPaooPBKwGI+STOkkRIYRrGgERSrw=
-github.com/shouni/go-http-kit v1.13.0/go.mod h1:jh/hCYrakDWTFdMxSZPH++TEqDBf1RYEREFLJmYgBe8=
+github.com/shouni/go-http-kit v1.13.1 h1:g4lZXaFcOZWG+wztbMlcSKxbL4aar26S7a8pKejEboo=
+github.com/shouni/go-http-kit v1.13.1/go.mod h1:nXhV9hnrO4mhJ4KDMgaywUmrsxG1ocpHtmyDFSkcEwc=
 github.com/shouni/go-utils v1.8.1 h1:70UeJiwW+uIdSojRmTgk+AvZtlYg/43h4W/bRKUahp0=
 github.com/shouni/go-utils v1.8.1/go.mod h1:z35gD3jCEREuezx2ZnVk44XbJoN0GF35OACYlbrxcAc=
 github.com/shouni/netarmor v1.4.2 h1:AFLOdui8gs7OD6HgAe1NPT5fuQXmYDC1dzuskSHHtOw=
