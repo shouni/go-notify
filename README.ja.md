@@ -20,7 +20,7 @@ CLI は持たず、アプリケーションに組み込んで使います。
 
 Slack 固有の話（記法の変換・リトライ・制限）は [docs/slack.md](docs/slack.md) にまとめてあります。
 
-### 主要な特徴
+## ✨ 特徴 (Features)
 
 * **チャネル非依存の本文組み立て**
   `notify.Body` は標準的な Markdown を出力し、Slack 固有の mrkdwn 記法への変換は

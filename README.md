@@ -20,7 +20,7 @@ package, so **the code that builds a body never has to know the channel**.
 
 Slack-specific matters (markup conversion, retries, limits) are collected in [docs/slack.md](docs/slack.md).
 
-### Key Features
+## ✨ Features
 
 * **Channel-agnostic body building**
   `notify.Body` emits standard Markdown, and the `slack` package converts it to Slack's own
