@@ -1,7 +1,9 @@
-// Package slack は、notify.Notifier の Slack Incoming Webhook 実装を提供します。
+// Package slack provides a Slack Incoming Webhook implementation of
+// notify.Notifier.
 //
-// 本文の標準 Markdown を Slack mrkdwn へ変換し、Block Kit 形式に組み立てて投稿します。
-// 入口は NewNotifier だけで、投稿処理そのものは公開していません。
+// It converts the body's standard Markdown to Slack mrkdwn, assembles it
+// into Block Kit, and posts it. NewNotifier is the only entry point; the
+// posting itself is not exported.
 package slack
 
 import (
@@ -17,66 +19,72 @@ import (
 )
 
 const (
-	// maxHeaderLength は Slack ヘッダーブロックの最大文字数です。Slack の上限そのものです。
+	// maxHeaderLength is the maximum length of a Slack header block. It is
+	// Slack's own limit.
 	maxHeaderLength = 150
-	// maxSectionBlocks は本文を分割して並べるセクションブロックの上限数です。
-	// Slack はメッセージ 1 件につき 50 ブロックまでで、見出し・区切り・フッターに
-	// 3 つ使います。通知として読める長さの上限でもあるので、余裕を持って抑えます。
+	// maxSectionBlocks is the maximum number of section blocks the body is
+	// split into. Slack allows 50 blocks per message, and the heading,
+	// divider and footer take 3. It also caps what is readable as a
+	// notification, so it stays well below that.
 	maxSectionBlocks = 20
-	// maxSectionLength は Slack セクションブロックの最大文字数です。
-	// Slack の上限 3000 の手前に余裕を取っています。
+	// maxSectionLength is the maximum length of a Slack section block, with
+	// a margin under Slack's limit of 3000.
 	maxSectionLength = 2900
-	// headerTruncationSuffix は見出し切り捨て時に追加するサフィックスです。
+	// headerTruncationSuffix is appended when the heading is truncated.
 	headerTruncationSuffix = "…"
-	// truncationSuffix は本文切り捨て時に追加するサフィックスです。
+	// truncationSuffix is appended when the body is truncated. It is
+	// Japanese on purpose: it appears in Slack for the owner.
 	truncationSuffix = "\n\n... (メッセージが長すぎるため省略されました)"
-	// codeFence は本文中のコードブロックのフェンスです。
-	// notify.Body が出力する並びと一致している必要があります（片方だけ変えると検出が外れます）。
+	// codeFence is the code block fence in the body. It must match the
+	// sequence notify.Body writes (changing only one side breaks detection).
 	codeFence = "```"
 )
 
 var (
-	// boldRegex は Markdown の太字記法を Slack mrkdwn の太字記法に変換します。
+	// boldRegex converts Markdown bold to Slack mrkdwn bold.
 	boldRegex = regexp.MustCompile(`\*\*(.*?)\*\*`) // **text** -> *text*
-	// headerRegex は Markdown の見出しを Slack mrkdwn の太字記法に変換します。
+	// headerRegex converts a Markdown heading to Slack mrkdwn bold.
 	headerRegex = regexp.MustCompile(`(?m)^##\s*(.*)$`) // ## Title -> *Title*
-	// listItemRegex は Markdown のリスト項目を Slack mrkdwn 向けの箇条書きに変換します。
-	// 空白は同一行のものだけを対象にします（\s だと改行まで飲み込み、
-	// 直前の行との改行ごと箇条書きに置き換えてしまうため）。
+	// listItemRegex converts a Markdown list item to a bullet for Slack
+	// mrkdwn. It matches whitespace on the same line only (\s would swallow
+	// the newline too, replacing the line break before it along with the
+	// marker).
 	listItemRegex = regexp.MustCompile(`(?m)^[ \t]*-[ \t]+`) // - item -> • item
-	// linkRegex は Markdown のリンクを Slack mrkdwn のリンクに変換します。
+	// linkRegex converts a Markdown link to a Slack mrkdwn link.
 	//
-	// URL 側は括弧の対応が取れていれば 1 段まで含められます。閉じ括弧を
-	// 「最初に見つかった )」で決めると、a_(b)_c のような URL が途中で切れ、
-	// 表示テキストと混ざった壊れたリンクになります。
-	// 対応の取れない括弧を含む URL と、表示テキストに ] を含むリンクは
-	// マッチせず、Markdown のまま出ます（壊れたリンクにするより literal のほうが読めるため）。
+	// The URL may contain one level of balanced parentheses. Ending it at
+	// the first ")" cuts a URL such as a_(b)_c midway and yields a broken
+	// link mixed with the display text. A URL with unbalanced parentheses,
+	// or a link whose display text contains ], does not match and stays as
+	// Markdown (literal Markdown reads better than a broken link).
 	linkRegex = regexp.MustCompile(`\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))+)\)`) // [text](url) -> <url|text>
-	// fencedBlockRegex は行頭のフェンスで開き、行頭のフェンスで閉じるコードブロックにマッチします。
-	// 閉じフェンスが無い場合はマッチせず、通常のテキストとして変換されます
-	// （壊れたフェンスに引きずられて以降の本文すべてが変換対象外になるのを避けるため）。
+	// fencedBlockRegex matches a code block opened and closed by fences at
+	// the start of a line. Without a closing fence it does not match and the
+	// text is converted as usual (so one broken fence cannot exempt the rest
+	// of the body from conversion).
 	fencedBlockRegex = regexp.MustCompile("(?ms)^" + codeFence + "[^\n]*\n.*?^" + codeFence + "[ \t]*$")
-	// preservedRegex は、エスケープしてはいけない部分にマッチします。
+	// preservedRegex matches the parts that must not be escaped.
 	//
-	// 対象は Slack が構文として解釈する <...>、すなわちスキーム付きリンク
-	// （<https://…|表示テキスト>、<mailto:…>）とメンション（<@U123>、<#C123>、
-	// <!here>）、および既にエスケープ済みの実体参照です。
+	// These are the <...> that Slack parses as syntax, namely links with a
+	// scheme (<https://…|text>, <mailto:…>) and mentions (<@U123>, <#C123>,
+	// <!here>), plus entities that are already escaped.
 	//
-	// <...> の中身を無条件に残さないのは、エラー文の <nil> のような
-	// ただの不等号までリンク構文と誤認してしまうためです。スキームか
-	// メンション記号で始まるものだけを構文として扱います。
+	// It does not keep every <...> as is, because that would mistake plain
+	// angle brackets such as <nil> in an error string for link syntax. Only
+	// those starting with a scheme or a mention sigil count as syntax.
 	preservedRegex = regexp.MustCompile(`<(?:[a-zA-Z][a-zA-Z0-9+.\-]*:[^<>]*|[@#!][^<>]*)>|&(?:amp|lt|gt);`)
 )
 
-// mrkdwnEscaper は Slack が特殊解釈する 3 文字を実体参照へ置き換えます。
-// strings.Replacer は置換結果を再走査しないため、& の二重エスケープは起きません。
+// mrkdwnEscaper replaces the three characters Slack treats specially with
+// entities. strings.Replacer does not rescan its output, so & is never
+// escaped twice.
 var mrkdwnEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
 
-// buildMessageBlocks は Slack の Block Kit ブロックを構築します。
-// 見出しと本文はそれぞれのブロックの上限に収まるよう切り詰めます。
+// buildMessageBlocks builds the Slack Block Kit blocks. The heading and the
+// body are cut down to fit their blocks' limits.
 func buildMessageBlocks(ctx context.Context, headerText string, message string) ([]block, error) {
 	if headerText == "" {
-		return nil, errors.New("通知の見出しが空です")
+		return nil, errors.New("notification title is empty")
 	}
 
 	blocks := []block{
@@ -93,13 +101,14 @@ func buildMessageBlocks(ctx context.Context, headerText string, message string) 
 	return blocks, nil
 }
 
-// buildSectionTexts は本文を Slack セクションブロック用の mrkdwn 文字列に変換し、
-// 1 ブロックの上限に収まるよう行の境界で分割します。空の本文は 0 個です。
+// buildSectionTexts converts the body to mrkdwn strings for Slack section
+// blocks, split at line boundaries so each fits one block's limit. An empty
+// body yields none.
 //
-// 切り詰めではなく分割するのは、切った位置がリンクの途中だと markup ごと壊れるためです
-// （署名付き URL は 1 本で 860 文字あり、3 本並べただけで上限を超えて最後のリンクが
-// 崩れていました）。分割しても maxSectionBlocks に収まらないときだけ、最後のブロックを
-// 切り詰めます。
+// It splits rather than truncates because a cut inside a link breaks the
+// markup (a signed URL is 860 characters, and three of them alone crossed
+// the limit and broke the last link). Only when the split still exceeds
+// maxSectionBlocks is the last block truncated.
 func buildSectionTexts(ctx context.Context, message string) []string {
 	if strings.TrimSpace(message) == "" {
 		return nil
@@ -115,27 +124,32 @@ func buildSectionTexts(ctx context.Context, message string) []string {
 		"max_blocks", maxSectionBlocks)
 	chunks = chunks[:maxSectionBlocks]
 	last := &chunks[len(chunks)-1]
-	// 最後のブロックは上限以内なので、省略の注記ぶんだけ空けてから注記を必ず付けます。
-	// フェンスは注記より前で閉じます（注記がコードブロックの中に入らないように）。
+	// The last block is within the limit, so make room for the truncation
+	// note and always append it. The fence is closed before the note (so the
+	// note does not end up inside the code block).
 	room := maxSectionLength - utf8.RuneCountInString(truncationSuffix) - fenceReserve
 	*last = closeUnterminatedFence(truncateGraphemes(*last, room, "")) + truncationSuffix
 	return chunks
 }
 
-// fenceReserve は、コードブロックの途中で区切るときに閉じフェンスのために空けておく文字数です。
+// fenceReserve is the number of characters kept free for the closing fence
+// when splitting inside a code block.
 const fenceReserve = len("\n" + codeFence)
 
-// maxPieceLength は、1 行を分けるときの 1 片の上限です。
+// maxPieceLength is the maximum length of one piece when a line is split.
 //
-// フェンスの途中で区切ると、そのブロックは「開きフェンス + 改行 + 本文 + 改行 + 閉じフェンス」
-// になります。予算から引くのは閉じ側（fenceReserve）だけでは足りず、再開する開きフェンスと
-// その直後の改行も要ります。ここを 1 文字でも見誤ると、上限を超えたブロックが送られて
-// Slack が invalid_blocks を返し、通知が丸ごと失われます。
+// A block split inside a fence becomes "opening fence + newline + text +
+// newline + closing fence". Subtracting only the closing side
+// (fenceReserve) from the budget is not enough: the reopening fence and the
+// newline after it count too. Getting this wrong by even one character
+// sends an oversized block, Slack answers invalid_blocks, and the whole
+// notification is lost.
 const maxPieceLength = maxSectionLength - 2*fenceReserve
 
-// splitSectionText は mrkdwn の本文を、各要素が maxSectionLength 以内になるよう
-// 行の境界で分割します。コードブロックの途中で区切るときは、前の要素を閉じフェンスで
-// 閉じ、次の要素を開きフェンスで始めます。1 行が上限を超えるときは空白で分けます。
+// splitSectionText splits a mrkdwn body at line boundaries so that each
+// element is at most maxSectionLength. When it splits inside a code block,
+// it closes the previous element with a closing fence and starts the next
+// with an opening fence. A line over the limit is split at spaces.
 func splitSectionText(message string) []string {
 	if utf8.RuneCountInString(message) <= maxSectionLength {
 		return []string{message}
@@ -193,21 +207,25 @@ func splitSectionText(message string) []string {
 	return chunks
 }
 
-// isFenceLine は、行がコードブロックの開き・閉じフェンスかを返します。
+// isFenceLine reports whether line is a code block's opening or closing
+// fence.
 func isFenceLine(line string) bool {
 	return strings.HasPrefix(strings.TrimSpace(line), codeFence)
 }
 
-// splitLongLine は、1 行が maxLen を超えるときに分けます。
+// splitLongLine splits a line longer than maxLen.
 //
-// 切る位置は、空白 → リンクの外側の任意の位置、の順に探します。空白を優先するのは
-// 語の途中で切らないためですが、**日本語は単語間に空白を置かない**ので、空白が無いのは
-// 例外ではなく通常です。そこで諦めると上限を超えたブロックがそのまま送られ、Slack が
-// invalid_blocks を返して通知が丸ごと失われます（見出しの切り詰めと同じ失敗の形です）。
+// It looks for a cut at a space first, then anywhere outside a link.
+// Spaces come first so words are not cut, but **Japanese puts no spaces
+// between words**, so a line without one is the normal case, not an
+// exception. Giving up there would send an oversized block, Slack would
+// answer invalid_blocks, and the whole notification would be lost (the same
+// failure as an untruncated heading).
 //
-// リンク構文 <...> の内側は避けますが、窓が丸ごとリンクの内側なら割ってでも切ります。
-// 壊れたリンクが 1 本出るのは、上限超えで通知が丸ごと消えるより軽い失敗だからです
-// （署名付き URL は 900 文字程度なので、実際にここへ来るのは異常な入力だけです）。
+// It avoids the inside of link syntax <...>, but when the whole window is
+// inside a link it cuts the link anyway. One broken link is a lighter
+// failure than losing the whole notification to an oversized block (a
+// signed URL is about 900 characters, so only abnormal input gets here).
 func splitLongLine(line string, maxLen int) []string {
 	if utf8.RuneCountInString(line) <= maxLen {
 		return []string{line}
@@ -217,14 +235,14 @@ func splitLongLine(line string, maxLen int) []string {
 	for utf8.RuneCountInString(line) > maxLen {
 		cut := lastBreakableSpace(line, maxLen)
 		if cut <= 0 {
-			// 空白が無いので境界で切る。リンクの外側を優先し、窓が丸ごとリンクの
-			// 内側ならリンクを割ってでも切る。
+			// No space, so cut at a cluster boundary. Prefer outside a
+			// link; if the whole window is inside one, cut the link.
 			outside, anywhere := lastBreaks(line, maxLen)
 			if cut = outside; cut <= 0 {
 				cut = anywhere
 			}
 			if cut <= 0 {
-				break // 1 クラスタが上限を超えている。これ以上は分けられない。
+				break // A single cluster exceeds the limit; it cannot be split further.
 			}
 			pieces = append(pieces, line[:cut])
 			line = line[cut:]
@@ -236,14 +254,16 @@ func splitLongLine(line string, maxLen int) []string {
 	return append(pieces, line)
 }
 
-// lastBreaks は、先頭から maxLen 文字以内にある最後の書記素クラスタ境界を 2 つ返します。
-// outside はリンク構文 <...> の外側にあるもの（無ければ -1）、anywhere は位置を問わない
-// 最後のものです。どちらもバイト位置です。
+// lastBreaks returns two of the last grapheme cluster boundaries within the
+// first maxLen characters: outside is the last one outside link syntax
+// <...> (-1 if none), and anywhere is the last one regardless of position.
+// Both are byte offsets.
 //
-// 書記素クラスタの境界を選ぶのは、結合文字や ZWJ 絵文字を分断しないためです
-// （truncateGraphemes と同じ理由）。数えるのはルーンです。上限の判定が
-// utf8.RuneCountInString である以上、ここだけクラスタで数えると、1 クラスタが
-// 複数ルーンになる入力（結合文字列や不正な UTF-8）で上限を 1 文字超えます。
+// It chooses cluster boundaries so that combining characters and ZWJ emoji
+// are not split (the same reason as truncateGraphemes). It counts runes:
+// the limit is checked with utf8.RuneCountInString, so counting clusters
+// here alone would overshoot by one on input where a cluster is several
+// runes (combining sequences or invalid UTF-8).
 func lastBreaks(line string, maxLen int) (outside, anywhere int) {
 	outside, anywhere = -1, -1
 	depth, runes, offset := 0, 0, 0
@@ -272,8 +292,9 @@ func lastBreaks(line string, maxLen int) (outside, anywhere int) {
 	return outside, anywhere
 }
 
-// lastBreakableSpace は、先頭から maxLen 文字以内にある最後の空白のバイト位置を返します。
-// <...> の内側にある空白は候補にしません。無ければ -1 です。
+// lastBreakableSpace returns the byte offset of the last space within the
+// first maxLen characters, ignoring spaces inside <...>. It returns -1 if
+// there is none.
 func lastBreakableSpace(line string, maxLen int) int {
 	cut := -1
 	depth := 0
@@ -299,19 +320,22 @@ func lastBreakableSpace(line string, maxLen int) int {
 	return cut
 }
 
-// formatMarkdown は一般的な Markdown 記法の一部を Slack mrkdwn に変換します。
+// formatMarkdown converts a subset of common Markdown to Slack mrkdwn.
 //
-// コードブロックの中身は変換しません。原文を見せるためのブロックで - を • に
-// 書き換えては、貼った本人が見たい原文が壊れます。エスケープだけはブロック内でも必要
-// なので分けて適用し、そこでは escapeMrkdwn ではなく無条件のエスケープを使います
-// （原文を見せる場では <https://…> の形をした文字列もただの文字列だからです）。
+// Code block contents are not converted. Rewriting - to • in a block meant
+// to show text verbatim would break the very text its author wants to see.
+// Escaping is still needed inside blocks, so it is applied separately, and
+// there it is unconditional rather than escapeMrkdwn (where text is shown
+// verbatim, a string shaped like <https://…> is just a string).
 func formatMarkdown(message string) string {
 	return replaceSegments(message, fencedBlockRegex, convertMarkdown, mrkdwnEscaper.Replace)
 }
 
-// replaceSegments は re にマッチする区間とその外側に、別々の変換を適用して連結します。
-// 「一部の区間だけ扱いを変える」処理がこのファイルに 2 つあり（コードブロックの内外と、
-// リンク・メンションの内外）、変わるのは正規表現と変換だけで走査の形は同じです。
+// replaceSegments applies one transform to the spans matching re and
+// another to the text outside them, and joins the result. This file has
+// two "treat some spans differently" passes (inside and outside code
+// blocks, inside and outside links and mentions); only the regex and the
+// transforms differ, and the traversal is the same.
 func replaceSegments(s string, re *regexp.Regexp, outside, inside func(string) string) string {
 	var sb strings.Builder
 	last := 0
@@ -326,14 +350,15 @@ func replaceSegments(s string, re *regexp.Regexp, outside, inside func(string) s
 	return sb.String()
 }
 
-// keepVerbatim は区間を変換せずそのまま返します。
+// keepVerbatim returns the span unchanged.
 func keepVerbatim(s string) string { return s }
 
-// convertMarkdown はコードブロックの外側 1 区間を mrkdwn へ変換します。
+// convertMarkdown converts one span outside code blocks to mrkdwn.
 //
-// リンク変換が先、エスケープが後です。Slack が & < > のエスケープを求めるのはプレーン
-// テキストだけで、<URL|表示テキスト> の内側は構文として解釈済みだからです。逆順にすると
-// 署名付き URL のクエリ区切り & が &amp; に化けて署名が変わり、URL が壊れます。
+// Links are converted first and escaping comes after. Slack requires & < >
+// to be escaped in plain text only; inside <URL|text> they are already
+// parsed as syntax. In the reverse order, a signed URL's & query
+// separators turn into &amp;, the signature changes, and the URL breaks.
 func convertMarkdown(segment string) string {
 	segment = linkRegex.ReplaceAllString(segment, "<$2|$1>")
 	segment = escapeMrkdwn(segment)
@@ -342,15 +367,17 @@ func convertMarkdown(segment string) string {
 	return listItemRegex.ReplaceAllString(segment, "• ")
 }
 
-// escapeMrkdwn は、プレーンテキスト中の Slack 制御文字を実体参照へ変換します。リンク・
-// メンションの構文と既存の実体参照は残します。> もエスケープするため行頭の引用記法は
-// 使えません（引用の > とエスケープが必要な > を区別できないためです）。
+// escapeMrkdwn converts Slack control characters in plain text to entities,
+// keeping link and mention syntax and existing entities. Because > is
+// escaped too, a blockquote at the start of a line is unsupported (a quote's
+// > cannot be told apart from a > that needs escaping).
 func escapeMrkdwn(message string) string {
 	return replaceSegments(message, preservedRegex, mrkdwnEscaper.Replace, keepVerbatim)
 }
 
-// truncateHeaderText は見出しを Slack ヘッダーブロックの上限に収めます。超えたまま送ると
-// Slack が invalid_blocks を返し、通知が丸ごと届かないためです。
+// truncateHeaderText fits the heading within the Slack header block limit.
+// Sent over the limit, Slack answers invalid_blocks and the whole
+// notification is lost.
 func truncateHeaderText(ctx context.Context, headerText string) string {
 	textLen := utf8.RuneCountInString(headerText)
 	if textLen <= maxHeaderLength {
@@ -363,7 +390,8 @@ func truncateHeaderText(ctx context.Context, headerText string) string {
 	return truncateWithSuffix(headerText, maxHeaderLength, headerTruncationSuffix)
 }
 
-// truncateSectionText は Slack セクションブロックの上限に収まるよう本文を短縮します。
+// truncateSectionText shortens the body to fit the Slack section block
+// limit.
 func truncateSectionText(ctx context.Context, message string) string {
 	textLen := utf8.RuneCountInString(message)
 	if textLen <= maxSectionLength {
@@ -376,18 +404,20 @@ func truncateSectionText(ctx context.Context, message string) string {
 	return closeUnterminatedFence(truncateWithSuffix(message, maxSectionLength, truncationSuffix))
 }
 
-// truncateWithSuffix は s を maxLen 文字以内に収め、末尾に suffix を付けます。
-// 呼び出し側が上限超過を判定済みであることが前提です。
+// truncateWithSuffix fits s within maxLen characters and appends suffix. It
+// assumes the caller has already found s to be over the limit.
 //
-// 判定はルーン数、切り詰めは書記素クラスタ単位です（理由は truncateGraphemes）。
-// クラスタ数はルーン数以下なので、ルーン判定が短縮の必要な場合を取りこぼすことはありません。
+// The check counts runes and the cut is by grapheme cluster (see
+// truncateGraphemes for why). A cluster count never exceeds the rune count,
+// so the rune check never misses a case that needs shortening.
 func truncateWithSuffix(s string, maxLen int, suffix string) string {
 	return truncateGraphemes(s, maxLen-utf8.RuneCountInString(suffix), suffix)
 }
 
-// closeUnterminatedFence は、切り詰めでコードブロックが途中で切れた場合に閉じフェンスを
-// 補います。長い出力を貼る Body.Block が最も切り詰めに当たりやすく、閉じフェンスごと落ちると
-// 以降の描画が崩れるためです。
+// closeUnterminatedFence adds a closing fence when truncation cut a code
+// block midway. Body.Block, which carries long pasted output, is the most
+// likely to be truncated, and losing its closing fence breaks the rendering
+// of everything after it.
 func closeUnterminatedFence(message string) string {
 	if strings.Count(message, codeFence)%2 == 0 {
 		return message
@@ -396,7 +426,9 @@ func closeUnterminatedFence(message string) string {
 	return message + "\n" + codeFence
 }
 
-// buildFooterBlock は送信時刻を表示する Slack コンテキストブロックを構築します。
+// buildFooterBlock builds the Slack context block showing the send time.
+// Its 「送信時刻」 label is Japanese on purpose: it appears in Slack for the
+// owner.
 func buildFooterBlock() block {
 	return contextBlock("notification-context", "送信時刻: "+jst.FormatTimestamp(jst.Now()))
 }

@@ -6,7 +6,8 @@ import (
 	"unicode/utf8"
 )
 
-// TestFormatMarkdownConversions は Markdown → mrkdwn の基本変換を検証します。
+// TestFormatMarkdownConversions verifies the basic Markdown → mrkdwn
+// conversions.
 func TestFormatMarkdownConversions(t *testing.T) {
 	tests := []struct {
 		name string
@@ -69,8 +70,8 @@ func TestFormatMarkdownConversions(t *testing.T) {
 	}
 }
 
-// TestFormatMarkdownEscapesSpecialCharacters は、Slack が特殊解釈する
-// & < > が実体参照に変換されることを検証します。
+// TestFormatMarkdownEscapesSpecialCharacters verifies that & < >, which
+// Slack treats specially, are converted to entities.
 func TestFormatMarkdownEscapesSpecialCharacters(t *testing.T) {
 	tests := []struct {
 		name string
@@ -103,13 +104,13 @@ func TestFormatMarkdownEscapesSpecialCharacters(t *testing.T) {
 	}
 }
 
-// TestFormatMarkdownSignedURLIsNotEscaped は、署名付き URL のクエリ区切り &
-// がエスケープされずにそのまま残ることを検証します。
+// TestFormatMarkdownSignedURLIsNotEscaped verifies that the & query
+// separators of a signed URL are left unescaped.
 //
-// Slack が & のエスケープを求めるのはプレーンテキストだけで、
-// <URL|表示テキスト> の内側は対象外です。ここで &amp; に変換してしまうと
-// 署名が変わって URL が 403 になるため、エスケープ範囲を誤ると壊れる側の
-// 代表例として、実在の署名付き URL に近い形で固定します。
+// Slack requires & to be escaped in plain text only, not inside
+// <URL|text>. Converting it to &amp; here changes the signature and the
+// URL answers 403, so as the typical case that breaks when the escaping
+// scope is wrong, it is pinned in a shape close to a real signed URL.
 func TestFormatMarkdownSignedURLIsNotEscaped(t *testing.T) {
 	const signedURL = "https://storage.example.com/bucket/artifact.bin" +
 		"?Algorithm=RSA-SHA256&Expires=604800&Signature=abc123"
@@ -122,8 +123,8 @@ func TestFormatMarkdownSignedURLIsNotEscaped(t *testing.T) {
 	}
 }
 
-// TestFormatMarkdownExistingLinkIsNotEscaped は、呼び出し側が直接書いた
-// mrkdwn リンクの中身もエスケープされないことを検証します。
+// TestFormatMarkdownExistingLinkIsNotEscaped verifies that the inside of a
+// mrkdwn link written directly by the caller is not escaped either.
 func TestFormatMarkdownExistingLinkIsNotEscaped(t *testing.T) {
 	in := "<https://example.com/?a=1&b=2|結果>"
 
@@ -132,13 +133,13 @@ func TestFormatMarkdownExistingLinkIsNotEscaped(t *testing.T) {
 	}
 }
 
-// TestFormatMarkdownPreservesCodeBlockContent は、コードブロックの中身が
-// 記法変換の対象外であることを検証します。
+// TestFormatMarkdownPreservesCodeBlockContent verifies that code block
+// contents are exempt from markup conversion.
 //
-// コードブロックはエラー出力やコマンドのログを原文のまま見せるためのものなので、
-// - が • に、**text** が *text* に書き換わると、貼った本人が見たい原文が壊れます。
-// TestFormatMarkdownConversions とは正反対の性質を守っており、
-// 片方だけ変えるともう片方が落ちます。
+// A code block shows error output or command logs verbatim, so rewriting -
+// to • or **text** to *text* breaks the very text its author wants to see.
+// It guards the opposite property to TestFormatMarkdownConversions, and
+// changing one side alone makes the other fail.
 func TestFormatMarkdownPreservesCodeBlockContent(t *testing.T) {
 	in := "**エラー詳細:**\n```\nusage:\n- foo **bar**\n## heading\n```"
 	want := "*エラー詳細:*\n```\nusage:\n- foo **bar**\n## heading\n```"
@@ -148,9 +149,10 @@ func TestFormatMarkdownPreservesCodeBlockContent(t *testing.T) {
 	}
 }
 
-// TestFormatMarkdownEscapesInsideCodeBlock は、コードブロックの中でも
-// Slack が特殊解釈する 3 文字がエスケープされることを検証します。
-// 記法変換の対象外であることと、エスケープが不要であることは別です。
+// TestFormatMarkdownEscapesInsideCodeBlock verifies that the three
+// characters Slack treats specially are escaped inside code blocks too.
+// Being exempt from markup conversion is not the same as needing no
+// escaping.
 func TestFormatMarkdownEscapesInsideCodeBlock(t *testing.T) {
 	in := "```\nexpected <nil>, got a&b\n```"
 	want := "```\nexpected &lt;nil&gt;, got a&amp;b\n```"
@@ -160,9 +162,10 @@ func TestFormatMarkdownEscapesInsideCodeBlock(t *testing.T) {
 	}
 }
 
-// TestFormatMarkdownConvertsAroundCodeBlock は、コードブロックの前後が
-// 通常どおり変換されることを検証します。保護範囲がブロック外へ漏れると、
-// 本文の太字やリンクが素の Markdown のまま Slack に出ます。
+// TestFormatMarkdownConvertsAroundCodeBlock verifies that the text before
+// and after a code block is converted as usual. If the protected range
+// leaked outside the block, the body's bold and links would reach Slack as
+// raw Markdown.
 func TestFormatMarkdownConvertsAroundCodeBlock(t *testing.T) {
 	in := "**前:** [x](https://example.com)\n```\n- そのまま\n```\n- 後"
 	want := "*前:* <https://example.com|x>\n```\n- そのまま\n```\n• 後"
@@ -172,9 +175,10 @@ func TestFormatMarkdownConvertsAroundCodeBlock(t *testing.T) {
 	}
 }
 
-// TestFormatMarkdownUnterminatedFenceIsNotProtected は、閉じフェンスが無い場合に
-// 保護を諦めて通常変換することを検証します。壊れたフェンス 1 つで以降の本文
-// すべてが変換対象外になる方が、被害が大きいためです。
+// TestFormatMarkdownUnterminatedFenceIsNotProtected verifies that without a
+// closing fence the protection is dropped and the text is converted as
+// usual. One broken fence exempting the rest of the body would do more
+// damage.
 func TestFormatMarkdownUnterminatedFenceIsNotProtected(t *testing.T) {
 	in := "```\n- item"
 	want := "```\n• item"
@@ -184,7 +188,7 @@ func TestFormatMarkdownUnterminatedFenceIsNotProtected(t *testing.T) {
 	}
 }
 
-// TestBuildSectionTexts は、本文全体が mrkdwn に変換されることを検証します。
+// TestBuildSectionTexts verifies that the whole body is converted to mrkdwn.
 func TestBuildSectionTexts(t *testing.T) {
 	got := buildSectionTexts(t.Context(), "## 見出し\n**重要**\n- item")
 	want := []string{"*見出し*\n*重要*\n• item"}
@@ -194,14 +198,15 @@ func TestBuildSectionTexts(t *testing.T) {
 	}
 }
 
-// TestBuildSectionTextsEmpty は、空白のみの本文がセクションを生まないことを検証します。
+// TestBuildSectionTextsEmpty verifies that a whitespace-only body produces
+// no section.
 func TestBuildSectionTextsEmpty(t *testing.T) {
 	if got := buildSectionTexts(t.Context(), "   \n  "); len(got) != 0 {
 		t.Errorf("buildSectionTexts() = %q, want none", got)
 	}
 }
 
-// TestTruncateSectionText は上限を超える本文が切り詰められることを検証します。
+// TestTruncateSectionText verifies that a body over the limit is truncated.
 func TestTruncateSectionText(t *testing.T) {
 	long := make([]rune, maxSectionLength+100)
 	for i := range long {
@@ -210,37 +215,39 @@ func TestTruncateSectionText(t *testing.T) {
 
 	got := truncateSectionText(t.Context(), string(long))
 	if gotLen := len([]rune(got)); gotLen > maxSectionLength {
-		t.Errorf("切り詰め後の文字数 = %d, want <= %d", gotLen, maxSectionLength)
+		t.Errorf("length after truncation = %d, want <= %d", gotLen, maxSectionLength)
 	}
 }
 
-// TestTruncateSectionTextClosesCodeFence は、コードブロックの内側で切り詰めが
-// 起きた場合に閉じフェンスが補われることを検証します。
-// 長い出力を貼る Body.Block が最も切り詰めに当たりやすい経路です。
+// TestTruncateSectionTextClosesCodeFence verifies that a closing fence is
+// added when truncation happens inside a code block. Body.Block, which
+// carries long pasted output, is the path most likely to be truncated.
 func TestTruncateSectionTextClosesCodeFence(t *testing.T) {
 	long := codeFence + "\n" + strings.Repeat("x", maxSectionLength+100)
 
 	got := truncateSectionText(t.Context(), long)
 	if count := strings.Count(got, codeFence); count%2 != 0 {
-		t.Errorf("フェンスの数 = %d, want 偶数 (本文 = %q)", count, got[len(got)-40:])
+		t.Errorf("fence count = %d, want even (body = %q)", count, got[len(got)-40:])
 	}
 	if !strings.HasSuffix(got, codeFence) {
-		t.Errorf("末尾が閉じフェンスではありません: %q", got[len(got)-40:])
+		t.Errorf("does not end with a closing fence: %q", got[len(got)-40:])
 	}
 }
 
-// TestTruncateHeaderText は上限を超える見出しが切り詰められることを検証します。
+// TestTruncateHeaderText verifies that a heading over the limit is
+// truncated.
 //
-// 上限を超えたまま送ると Slack が invalid_blocks を返し、通知が丸ごと失われます。
+// Sent over the limit, Slack answers invalid_blocks and the whole
+// notification is lost.
 func TestTruncateHeaderText(t *testing.T) {
 	long := strings.Repeat("あ", maxHeaderLength+50)
 
 	got := truncateHeaderText(t.Context(), long)
 	if gotLen := len([]rune(got)); gotLen > maxHeaderLength {
-		t.Errorf("切り詰め後の文字数 = %d, want <= %d", gotLen, maxHeaderLength)
+		t.Errorf("length after truncation = %d, want <= %d", gotLen, maxHeaderLength)
 	}
 	if !strings.HasSuffix(got, headerTruncationSuffix) {
-		t.Errorf("切り詰めのサフィックスが付いていません: %q", got)
+		t.Errorf("truncation suffix missing: %q", got)
 	}
 
 	short := "✅ 完了しました"
@@ -249,9 +256,10 @@ func TestTruncateHeaderText(t *testing.T) {
 	}
 }
 
-// TestSplitSectionTextKeepsLinksIntact は、上限を超える本文が行の境界で複数ブロックに
-// 分かれ、リンクの markup が途中で切れないことを検証します。署名付き URL は 1 本で
-// 860 文字あり、3 本並べると 1 ブロックの上限を超えて最後のリンクが崩れていました。
+// TestSplitSectionTextKeepsLinksIntact verifies that a body over the limit
+// is split across blocks at line boundaries without cutting a link's
+// markup. A signed URL is 860 characters, and three of them crossed one
+// block's limit and broke the last link.
 func TestSplitSectionTextKeepsLinksIntact(t *testing.T) {
 	link := func(n int) string {
 		return "<https://storage.googleapis.com/b/" + strings.Repeat("x", 1000) + "?sig=" + strings.Repeat("a", 40) + "|link" + string(rune('0'+n)) + ">"
@@ -276,8 +284,8 @@ func TestSplitSectionTextKeepsLinksIntact(t *testing.T) {
 	}
 }
 
-// TestSplitSectionTextClosesAndReopensFence は、コードブロックの途中で区切るときに
-// 前のブロックを閉じ、次のブロックを開き直すことを検証します。
+// TestSplitSectionTextClosesAndReopensFence verifies that a split inside a
+// code block closes the previous block and reopens the next.
 func TestSplitSectionTextClosesAndReopensFence(t *testing.T) {
 	var sb strings.Builder
 	sb.WriteString("before\n" + codeFence + "\n")
@@ -303,8 +311,9 @@ func TestSplitSectionTextClosesAndReopensFence(t *testing.T) {
 	}
 }
 
-// TestSplitLongLineBreaksOutsideLinks は、上限に収まるリンクを割らずに分けることを
-// 検証します。切る位置は空白を優先し、<...> の内側は避けます。
+// TestSplitLongLineBreaksOutsideLinks verifies that a line is split without
+// cutting a link that fits the limit. Cuts prefer spaces and avoid the
+// inside of <...>.
 func TestSplitLongLineBreaksOutsideLinks(t *testing.T) {
 	line := "a <https://x/" + strings.Repeat("p", 20) + "|t> b " + strings.Repeat("c", 30)
 	pieces := splitLongLine(line, 40)
@@ -319,12 +328,14 @@ func TestSplitLongLineBreaksOutsideLinks(t *testing.T) {
 	}
 }
 
-// TestSplitLongLineCutsAnOversizedLink は、1 本で上限を超えるリンクは割ってでも切ることを
-// 検証します。
+// TestSplitLongLineCutsAnOversizedLink verifies that a single link over the
+// limit is cut anyway.
 //
-// リンクを守って上限超えのブロックを返すと、Slack が invalid_blocks を返して通知が丸ごと
-// 失われます。壊れたリンクが 1 本出るほうが軽い失敗です。署名付き URL は 900 文字程度なので、
-// ここへ来るのは異常な入力だけですが、そのときに通知ごと消えてよい理由にはなりません。
+// Keeping the link whole and returning an oversized block makes Slack
+// answer invalid_blocks, and the whole notification is lost. One broken
+// link is the lighter failure. A signed URL is about 900 characters, so
+// only abnormal input gets here, but that is no reason to lose the
+// notification when it does.
 func TestSplitLongLineCutsAnOversizedLink(t *testing.T) {
 	const maxLen = 40
 	line := "<https://x/" + strings.Repeat("p", 100) + "|t>"
@@ -341,8 +352,9 @@ func TestSplitLongLineCutsAnOversizedLink(t *testing.T) {
 	}
 }
 
-// TestBuildSectionTextsCapsBlocks は、分割しても収まらない本文は最後のブロックを
-// 切り詰めることを検証します。Slack の 50 ブロック上限を超えると通知が丸ごと失われます。
+// TestBuildSectionTextsCapsBlocks verifies that a body that does not fit
+// even when split has its last block truncated. Exceeding Slack's 50-block
+// limit loses the whole notification.
 func TestBuildSectionTextsCapsBlocks(t *testing.T) {
 	body := strings.Repeat(strings.Repeat("z", 100)+"\n", maxSectionBlocks*40)
 	got := buildSectionTexts(t.Context(), body)

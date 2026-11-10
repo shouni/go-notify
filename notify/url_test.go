@@ -6,7 +6,8 @@ import (
 	"github.com/shouni/go-notify/notify"
 )
 
-// TestJoinURL は連結結果と、空文字列を返す条件を検証します。
+// TestJoinURL verifies the joined result and the cases that return an empty
+// string.
 func TestJoinURL(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -67,12 +68,13 @@ func TestJoinURL(t *testing.T) {
 	}
 }
 
-// TestJoinURLEscapesPathElements は、パス要素が URL エスケープされることを検証します。
-// ID に空白が混じっても、リンクがそこで切れた mrkdwn になりません。
+// TestJoinURLEscapesPathElements verifies that path elements are URL-escaped,
+// so an ID containing a space does not produce mrkdwn whose link breaks
+// there.
 //
-// スラッシュだけはエスケープされずパス区切りとして残ります（url.JoinPath の挙動）。
-// 呼び出し側が "/web/history" のようなパスをそのまま渡せる形なので、
-// 区切りと中身を区別しません。
+// Slashes alone are not escaped and stay as path separators (url.JoinPath's
+// behaviour). Callers pass paths such as "/web/history" as they are, so
+// separators and content are not told apart.
 func TestJoinURLEscapesPathElements(t *testing.T) {
 	got := notify.JoinURL("https://example.com", "/history", "job 1/2")
 	want := "https://example.com/history/job%201/2"
@@ -81,8 +83,9 @@ func TestJoinURLEscapesPathElements(t *testing.T) {
 	}
 }
 
-// TestJoinURLEmptyResultSkipsLine は、組み立てに失敗した URL を Body.Link へ
-// 渡すと行ごと省かれることを検証します。空文字列を返す設計の理由そのものです。
+// TestJoinURLEmptyResultSkipsLine verifies that passing a URL that failed to
+// build to Body.Link omits the whole line, which is the very reason JoinURL
+// returns an empty string.
 func TestJoinURLEmptyResultSkipsLine(t *testing.T) {
 	body := notify.NewBody().
 		Code("Job ID", "job-1").

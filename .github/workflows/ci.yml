@@ -1,4 +1,4 @@
-# CI の実体は shouni/workflows。ジョブ構成とタグ運用の理由はそちらの README にある。
+# The CI itself lives in shouni/workflows; its README explains the job layout and the tagging practice.
 name: CI
 
 on:
@@ -18,6 +18,6 @@ jobs:
   ci:
     uses: shouni/workflows/.github/workflows/go-ci.yml@v1
     with:
-      # 通知本文は外部入力。エスケープも分割も手書きの走査なので探索を毎回回す。
+      # Notification bodies are external input, and both escaping and splitting are hand-written scans, so fuzz on every run.
       fuzz-targets: "./slack#FuzzFormatMarkdown ./slack#FuzzSplitSectionText"
       fuzz-time: 60s

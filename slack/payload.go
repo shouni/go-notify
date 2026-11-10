@@ -1,34 +1,38 @@
 package slack
 
-// このファイルは、Incoming Webhook に送る JSON の形を持ちます。
+// This file holds the shape of the JSON sent to an Incoming Webhook.
 //
-// 以前は slack-go/slack の構造体を使っていましたが、使っていたのは JSON タグ付きの
-// 構造体 5 種と、そのコンストラクタだけでした。API クライアントも Socket Mode も
-// 使わないのに、go-notify を使う全サービスの依存グラフに slack-go と gorilla/websocket
-// が載り、bump と脆弱性対応の対象になっていました。使うブロックは header / divider /
-// section / context の 4 種で、どれも数年変わっていない基本形なので、形をここで持ちます。
+// It used to come from slack-go/slack's structs, but all that was used were
+// five JSON-tagged structs and their constructors. Neither the API client
+// nor Socket Mode was used, yet slack-go and gorilla/websocket sat in the
+// dependency graph of every service using go-notify, and in their bump and
+// vulnerability queues. The blocks used are header / divider / section /
+// context, all basic shapes unchanged for years, so the shape lives here.
 //
-// 出力の JSON は slack-go 時代と同じです（ゴールデンテストで固定）。唯一の差は、
-// あちらが omitempty 無しで常に出していた "replace_original":false と
-// "delete_original":false が消えたことで、Webhook ではどちらも意味を持ちません。
+// The JSON output is the same as in the slack-go days (pinned by a golden
+// test). The only difference is that "replace_original":false and
+// "delete_original":false, which slack-go always emitted without omitempty,
+// are gone; neither means anything on a webhook.
 
-// webhookMessage は Incoming Webhook のペイロードです。
+// webhookMessage is the Incoming Webhook payload.
 type webhookMessage struct {
-	// Text は、blocks がトップレベルにあるときはプッシュ通知などのフォールバックです。
+	// Text is the fallback for push notifications and the like when the
+	// blocks are top-level.
 	Text        string       `json:"text,omitempty"`
 	Attachments []attachment `json:"attachments,omitempty"`
 	Blocks      []block      `json:"blocks,omitempty"`
 }
 
-// attachment は色帯つきの囲みです。Blocks はこの中に入ります。
+// attachment is a container with a colour bar. Blocks go inside it.
 type attachment struct {
 	Color    string  `json:"color,omitempty"`
 	Fallback string  `json:"fallback,omitempty"`
 	Blocks   []block `json:"blocks,omitempty"`
 }
 
-// block は Block Kit のブロック 1 つです。種類ごとに使うフィールドが違い、
-// 使わないものは omitempty で消えます（JSON の形は slack-go の各ブロック型と同じ）。
+// block is a single Block Kit block. Each type uses different fields, and
+// unused ones disappear through omitempty (the JSON shape matches each of
+// slack-go's block types).
 type block struct {
 	Type     string       `json:"type"`
 	BlockID  string       `json:"block_id,omitempty"`
@@ -36,7 +40,7 @@ type block struct {
 	Elements []textObject `json:"elements,omitempty"`
 }
 
-// textObject は plain_text または mrkdwn のテキストです。
+// textObject is plain_text or mrkdwn text.
 type textObject struct {
 	Type  string `json:"type"`
 	Text  string `json:"text"`
@@ -53,22 +57,22 @@ const (
 	textTypeMrkdwn = "mrkdwn"
 )
 
-// headerBlock は見出しです。plain_text しか受け付けません。
+// headerBlock is a heading. It accepts plain_text only.
 func headerBlock(text string) block {
 	return block{Type: blockTypeHeader, Text: &textObject{Type: textTypePlain, Text: text, Emoji: true}}
 }
 
-// dividerBlock は区切り線です。
+// dividerBlock is a divider line.
 func dividerBlock() block {
 	return block{Type: blockTypeDivider}
 }
 
-// sectionBlock は本文 1 段落です。
+// sectionBlock is one paragraph of the body.
 func sectionBlock(mrkdwn string) block {
 	return block{Type: blockTypeSection, Text: &textObject{Type: textTypeMrkdwn, Text: mrkdwn}}
 }
 
-// contextBlock は小さな補足行です。
+// contextBlock is a small supplementary line.
 func contextBlock(blockID, mrkdwn string) block {
 	return block{Type: blockTypeContext, BlockID: blockID, Elements: []textObject{{Type: textTypeMrkdwn, Text: mrkdwn}}}
 }

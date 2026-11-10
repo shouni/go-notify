@@ -9,13 +9,15 @@ import (
 	"github.com/shouni/go-notify/notify"
 )
 
-// TestPayloadWireShape は、Incoming Webhook に送る JSON の形を固定します。
+// TestPayloadWireShape pins the shape of the JSON sent to the Incoming
+// Webhook.
 //
-// この形は slack-go の構造体で組んでいたころのものと同じです（依存を外すときに
-// 出力を突き合わせて確かめました）。差は、あちらが omitempty 無しで常に出していた
-// replace_original / delete_original が無いことだけで、Webhook ではどちらも
-// 意味を持ちません。ブロックの種類やキーの綴りを変えると Slack が invalid_blocks を
-// 返して通知が丸ごと失われるので、ここで固定します。
+// The shape is the same as when it was built from slack-go's structs (the
+// outputs were compared when the dependency was removed). The only
+// difference is the absence of replace_original / delete_original, which
+// slack-go always emitted without omitempty and which mean nothing on a
+// webhook. Changing a block type or a key's spelling makes Slack answer
+// invalid_blocks and the whole notification is lost, so it is pinned here.
 func TestPayloadWireShape(t *testing.T) {
 	t.Parallel()
 

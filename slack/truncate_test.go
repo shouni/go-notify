@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// TestTruncate 関数のテスト
+// TestTruncateGraphemes tests truncateGraphemes.
 func TestTruncateGraphemes(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -14,25 +14,25 @@ func TestTruncateGraphemes(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "エッジケース: maxLenが負の値 (-1)", // ★ テスト名を修正
+			name:     "エッジケース: maxLenが負の値 (-1)", // ★ test name corrected
 			input:    "テストテキスト",
 			maxLen:   -1,
 			suffix:   "...",
-			expected: "", // ★ 期待値を修正 (空文字列を返す)
+			expected: "", // ★ expected value corrected (returns an empty string)
 		},
 		{
-			name:     "エッジケース: maxLenがゼロ (0)", // ★ テスト名を修正
+			name:     "エッジケース: maxLenがゼロ (0)", // ★ test name corrected
 			input:    "テストテキスト",
 			maxLen:   0,
 			suffix:   "...",
-			expected: "", // ★ 期待値を修正 (空文字列を返す)
+			expected: "", // ★ expected value corrected (returns an empty string)
 		},
 		{
 			name:     "エッジケース: maxLenがゼロ (0) かつ空文字列",
 			input:    "",
 			maxLen:   0,
 			suffix:   "...",
-			expected: "", // 期待値は元々正しい
+			expected: "", // the expected value was already correct
 		},
 		{
 			name:     "最大長より短い文字列",
@@ -103,15 +103,16 @@ func TestTruncateGraphemes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			actual := truncateGraphemes(tt.input, tt.maxLen, tt.suffix)
 			if actual != tt.expected {
-				t.Errorf("truncateGraphemes(%q, %d, %q) = %q, 期待値 %q", tt.input, tt.maxLen, tt.suffix, actual, tt.expected)
+				t.Errorf("truncateGraphemes(%q, %d, %q) = %q, want %q", tt.input, tt.maxLen, tt.suffix, actual, tt.expected)
 			}
 		})
 	}
 }
 
-// TestTruncatePreservesGraphemeClusters は、複数の rune で1文字を構成する文字列を
-// 分断しないことを検証します。rune 単位で切っていた頃は、いずれも壊れていました
-// （"が" が "か" になる、ZWJ が宙に浮く、肌色修飾子が剥がれる）。
+// TestTruncatePreservesGraphemeClusters verifies that characters made of
+// several runes are not split. While truncation cut by rune, every one of
+// these broke ("が" became "か", a ZWJ was left dangling, a skin-tone
+// modifier came off).
 func TestTruncateGraphemesPreservesClusters(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -121,9 +122,10 @@ func TestTruncateGraphemesPreservesClusters(t *testing.T) {
 		expected string
 	}{
 		{
-			// NFD（濁点を分離した形）。rune で切ると濁点が落ちて別の文字になる。
+			// NFD (dakuten separated). Cutting by rune drops the dakuten and
+			// yields a different character.
 			name:     "結合文字: 濁点を落とさない",
-			input:    "が゙ぎ゙ぐ", // "が" + 結合濁点 ...
+			input:    "が゙ぎ゙ぐ", // "が" + combining dakuten ...
 			maxLen:   1,
 			suffix:   "",
 			expected: "が゙",
@@ -150,7 +152,8 @@ func TestTruncateGraphemesPreservesClusters(t *testing.T) {
 			expected: "👋🏽",
 		},
 		{
-			// クラスタ数が maxLen 以内なら、rune 数が超えていてもそのまま返す。
+			// Within maxLen clusters, return unchanged even if the rune count
+			// exceeds it.
 			name:     "クラスタ数が上限以内なら切らない",
 			input:    "👨‍👩‍👧‍👦",
 			maxLen:   2,
