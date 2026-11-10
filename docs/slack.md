@@ -96,8 +96,9 @@ labelled 「送信時刻」. Callers do not need to put the time in the body.
 * **A heading is required.** An empty `Message.Title` returns an error.
 * The heading is truncated at **150 characters**, the header block limit. That is Slack's
   own limit, and sending over it returns `invalid_blocks` and loses the whole notification.
-* The body is truncated at **2900 characters** to fit the section block limit
-  (leaving a margin under Slack's limit of 3000).
+* The body is split into section blocks of up to **2900 characters** each
+  (leaving a margin under Slack's limit of 3000), and only truncated when it would
+  need more than **20 blocks**: the 20th block is cut and ends with the truncation note.
 * Truncation is by grapheme cluster. Cutting by rune would split characters
   with a dakuten or ZWJ emoji midway.
 * When truncation happens inside a code block, a closing fence is added,
