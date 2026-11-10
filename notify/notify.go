@@ -1,35 +1,37 @@
-// Package notify は、チャネル非依存の通知インターフェースと、
-// パイプライン処理の結果を定型フォーマットで通知するための共通レイヤーを提供します。
+// Package notify provides a channel-agnostic notification interface and a
+// shared layer for reporting pipeline outcomes in a fixed format.
 //
-// 実際の送信は各チャネルのサブパッケージ（slack など）が担当し、
-// 本パッケージは「何を通知するか」だけを扱います。
+// Sending is done by each channel's subpackage (slack and so on); this
+// package deals only with what to notify.
 package notify
 
 import "context"
 
-// NotAvailable は値が存在しない場合に表示する既定の文字列です。
+// NotAvailable is the default text shown when a value is absent.
 const NotAvailable = "N/A"
 
-// Level は通知が伝える結果の種別です。見出しの文言と違い機械が読める形で、
-// チャネルが色やアイコンを出し分けるために使います。どう表現するかは各チャネルの判断です。
+// Level is the kind of outcome a notification reports. Unlike the heading
+// text it is machine-readable, so a channel can pick a colour or an icon
+// from it. How to present it is up to each channel.
 type Level int
 
 const (
-	// LevelNone は種別が未指定であることを表します。Level のゼロ値です。
-	// チャネルは種別に依存しない既定の表示を選びます。
+	// LevelNone means no level was given. It is the zero value of Level.
+	// A channel chooses its default, level-independent presentation.
 	LevelNone Level = iota
-	// LevelSuccess は処理が正常に完了したことを表します。
+	// LevelSuccess means the work completed successfully.
 	LevelSuccess
-	// LevelFailure は処理が失敗したことを表します。
+	// LevelFailure means the work failed.
 	LevelFailure
-	// LevelSkipped は処理を実行しなかったことを表します。
+	// LevelSkipped means the work was not run.
 	LevelSkipped
 )
 
-// String は Level の名前を返します。
+// String returns the name of the Level.
 //
-// default に落とさず全種別を並べるのは、種別を足したときの追記漏れを exhaustive に
-// 拾わせるためです。switch の後ろの return は定数以外の値（数値変換など）の受け皿です。
+// Every level is listed instead of falling into default so that exhaustive
+// catches a level added without a case. The return after the switch handles
+// values that are not one of the constants (a numeric conversion, say).
 func (l Level) String() string {
 	switch l {
 	case LevelNone:
@@ -45,48 +47,51 @@ func (l Level) String() string {
 	return "none"
 }
 
-// Message は 1 通の通知を表します。
+// Message is a single notification.
 type Message struct {
-	// Title は通知の見出しです。空にはできません。
+	// Title is the notification heading. It must not be empty.
 	Title string
-	// Body は通知の本文です。組み立てには Body を使ってください。
+	// Body is the notification body. Build it with Body.
 	//
-	// 記法は Body が出力する標準 Markdown です。Slack mrkdwn（*強調* や
-	// <URL|表示テキスト>）を直接書くと、その本文は Slack 以外へ送れなくなります。
+	// Its markup is the standard Markdown that Body emits. Writing Slack
+	// mrkdwn (*bold* or <URL|text>) directly makes the body unsendable to
+	// any channel other than Slack.
 	Body string
-	// Level は結果の種別です。ゼロ値（LevelNone）なら種別未指定として扱われます。
+	// Level is the kind of outcome. The zero value (LevelNone) means none
+	// was given.
 	//
-	// Pipeline を使う場合は結果に応じて自動で設定されるため、
-	// 呼び出し側が指定する必要はありません。
+	// Pipeline sets it from the outcome, so callers using Pipeline do not
+	// need to set it.
 	Level Level
 }
 
-// Notifier は Message を送信先へ投稿します。
+// Notifier posts a Message to its destination.
 type Notifier interface {
-	// Notify は msg を送信します。
+	// Notify sends msg.
 	Notify(ctx context.Context, msg Message) error
 }
 
-// NotifierFunc は関数を Notifier として扱うためのアダプターです。
+// NotifierFunc is an adapter that lets a function be used as a Notifier.
 type NotifierFunc func(ctx context.Context, msg Message) error
 
-// Notify は Notifier インターフェースを満たします。
+// Notify implements the Notifier interface.
 func (f NotifierFunc) Notify(ctx context.Context, msg Message) error {
 	return f(ctx, msg)
 }
 
-// disabledNotifier は何も送信しない Notifier です。
+// disabledNotifier is a Notifier that sends nothing.
 type disabledNotifier struct{}
 
-// Notify は何もせずに nil を返します。
+// Notify does nothing and returns nil.
 func (disabledNotifier) Notify(_ context.Context, _ Message) error { return nil }
 
-// Disabled は通知を行わない Notifier を返します。通知はアプリケーションの主目的ではなく、
-// 宛先が未設定であることはエラーではないため、送信を試みずに常に成功します。
+// Disabled returns a Notifier that does not notify. Notifying is not an
+// application's main purpose and an unset destination is not an error, so
+// it always succeeds without attempting to send.
 func Disabled() Notifier { return disabledNotifier{} }
 
-// Enabled は n が実際に送信を行う Notifier かどうかを返します（nil と Disabled は false）。
-// 本文の組み立てに費用がかかる場合、これで事前に打ち切れます。
+// Enabled reports whether n is a Notifier that actually sends (false for nil
+// and Disabled). Callers can use it to skip building an expensive body.
 func Enabled(n Notifier) bool {
 	if n == nil {
 		return false

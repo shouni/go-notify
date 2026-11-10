@@ -10,11 +10,13 @@ import (
 	"github.com/shouni/go-notify/notify"
 )
 
-// levelColors は結果の種別を Slack の attachment の色に対応させます。
-// good / danger / warning は Slack の組み込みキーワードで、空文字は「色を付けない」です。
+// levelColors maps each outcome level to a Slack attachment colour.
+// good / danger / warning are Slack's built-in keywords, and an empty string
+// means "no colour".
 //
-// LevelNone にも値を持たせて全種別を並べるのは、種別を足したときの指定漏れを exhaustive に
-// 拾わせるためです。抜けてもマップ参照は空文字を返して素通りし、無色で出てしまいます。
+// LevelNone has an entry too, so that every level is listed and exhaustive
+// catches a level added without one. A missing key would look up as an
+// empty string, pass silently, and post uncoloured.
 var levelColors = map[notify.Level]string{
 	notify.LevelNone:    "",
 	notify.LevelSuccess: "good",
@@ -22,31 +24,35 @@ var levelColors = map[notify.Level]string{
 	notify.LevelSkipped: "warning",
 }
 
-// notifier は Slack Incoming Webhook へ通知を投稿します。
+// notifier posts notifications to a Slack Incoming Webhook.
 //
-// 投稿者の表示名・アイコン・投稿先チャンネルは指定しません。Slack アプリ経由で
-// 作った Incoming Webhook はこれらの上書きを受け付けず、常にアプリの設定を
-// 継承するためです（受け付けるのは Slack が非推奨とした custom integration 版だけ）。
-// サービスごとに表示を変えたい場合は、Slack アプリを分けてください。
+// It sets no poster name, icon or destination channel: an Incoming Webhook
+// created through a Slack app refuses to override them and always inherits
+// the app's settings (only the custom-integration kind, which Slack has
+// deprecated, accepted them). To present each service differently, give
+// each its own Slack app.
 type notifier struct {
 	client     httpkit.Poster
 	webhookURL string
 }
 
-// notifier が notify.Notifier を満たすことを保証します。
+// Ensure notifier implements notify.Notifier.
 var _ notify.Notifier = (*notifier)(nil)
 
-// NewNotifier は Slack Incoming Webhook への notify.Notifier を生成します。
+// NewNotifier creates a notify.Notifier for a Slack Incoming Webhook.
 //
-// webhookURL が空なら通知未設定として notify.Disabled() を返します。設定されているのに
-// client が nil の場合は、送信できない設定ミスなのでエラーを返します。
+// A blank webhookURL means notifications are not configured, and it returns
+// notify.Disabled(). A configured URL with a nil client is a configuration
+// mistake that cannot send, so it returns an error.
 //
-// # リトライについて
+// # Retries
 //
-// Webhook への投稿は非冪等で、Slack に届いたのにレスポンスを取りこぼすと同じ通知が
-// 二重に投稿されます。既定の httpkit.New はリトライが有効なので、クライアントを他の
-// 用途と共有していると起こり得ます。取りこぼしと重複のどちらを避けたいかはアプリケーション
-// 側の判断なので、本パッケージは方針を持たず渡された client をそのまま使います。
+// Webhook posts are not idempotent: if the post reaches Slack but the
+// response is lost, a retry posts the same notification twice. httpkit.New
+// enables retry by default, so this can happen when the client is shared
+// with other traffic. Whether a lost notification or a duplicate is worse
+// is the application's decision, so this package takes no position and uses
+// the client it is given as is.
 //
 //	notifier, err := slack.NewNotifier(httpClient.WithoutRetry(), webhookURL)
 func NewNotifier(client httpkit.Poster, webhookURL string) (notify.Notifier, error) {
@@ -54,15 +60,16 @@ func NewNotifier(client httpkit.Poster, webhookURL string) (notify.Notifier, err
 		return notify.Disabled(), nil
 	}
 	if client == nil {
-		return nil, errors.New("slack Webhook URLが設定されていますが、HTTPクライアントがnilです")
+		return nil, errors.New("slack webhook URL is set but the HTTP client is nil")
 	}
 
 	return &notifier{client: client, webhookURL: webhookURL}, nil
 }
 
-// Notify は notify.Notifier インターフェースを実装します。msg.Title は必須です。
-// 本文から見出しを推測しないのは、何を見出しにするかが通知の意味を決める判断であり、
-// 本文の 1 行目がそれである保証がないためです。
+// Notify implements the notify.Notifier interface. msg.Title is required.
+// It does not guess a heading from the body, because choosing the heading
+// decides what the notification means, and nothing guarantees the body's
+// first line is it.
 func (n *notifier) Notify(ctx context.Context, msg notify.Message) error {
 	payload, err := n.buildWebhookMessage(ctx, msg)
 	if err != nil {
@@ -76,57 +83,61 @@ func (n *notifier) Notify(ctx context.Context, msg notify.Message) error {
 	return nil
 }
 
-// redactedWebhookURL は、エラー文の中で Webhook URL の代わりに出す文字列です。
+// redactedWebhookURL is written in place of the webhook URL in error text.
 const redactedWebhookURL = "<webhook URL>"
 
-// sendError は送信の失敗を、Webhook URL を伏せた文面で表します。
+// sendError reports a send failure with the webhook URL redacted from its
+// text.
 //
-// Incoming Webhook の URL はそれ自体が投稿の認可なので、秘密として扱います。しかし
-// HTTP クライアントは失敗の文面に宛先を含めます（net/http の *url.Error と、httpkit の
-// 「HTTPリクエスト失敗 (URL: …)」の両方）。呼び出し側はこのエラーをそのままログに
-// 出すので、ここで伏せておかないと秘密がログ基盤に残ります。
+// An Incoming Webhook URL is itself the authorisation to post, so it is
+// treated as a secret. HTTP clients, however, put the destination into
+// their failure text (both net/http's *url.Error and httpkit's
+// "HTTP request failed (URL: …)"). Callers log this error as is, so unless
+// it is redacted here the secret ends up in the logging backend.
 //
-// Unwrap は元のエラーを返すため、errors.Is / errors.As による原因の判定はそのまま効きます。
-// 伏せるのは Error() の文面だけです。
+// Unwrap returns the original error, so errors.Is / errors.As still work on
+// the cause. Only the Error() text is redacted.
 type sendError struct {
 	webhookURL string
 	cause      error
 }
 
 func (e *sendError) Error() string {
-	return "slack Webhookメッセージの送信に失敗しました: " +
+	return "failed to send slack webhook message: " +
 		strings.ReplaceAll(e.cause.Error(), e.webhookURL, redactedWebhookURL)
 }
 
 func (e *sendError) Unwrap() error { return e.cause }
 
-// buildWebhookMessage は Slack Incoming Webhook に送信するペイロードを構築します。
+// buildWebhookMessage builds the payload sent to the Slack Incoming Webhook.
 //
-// 色が対応する種別だけ attachment に包みます。attachment は左端に色帯が付く代わりに本文が
-// 内側へ寄るため、種別が未指定の通知の見た目を変えないよう LevelNone は blocks のままです。
+// Only levels with a colour are wrapped in an attachment. An attachment adds
+// a colour bar on the left but indents the body, so LevelNone stays as
+// top-level blocks to keep level-less notifications looking as they did.
 func (n *notifier) buildWebhookMessage(ctx context.Context, msg notify.Message) (webhookMessage, error) {
 	blocks, err := buildMessageBlocks(ctx, msg.Title, msg.Body)
 	if err != nil {
-		return webhookMessage{}, fmt.Errorf("slack Block Kitの構築に失敗しました: %w", err)
+		return webhookMessage{}, fmt.Errorf("failed to build slack Block Kit: %w", err)
 	}
 
 	var payload webhookMessage
 
-	// 表に無い種別（数値からの変換など）は空文字になり、LevelNone と同じ扱いになります。
+	// A level missing from the table (a numeric conversion, say) looks up as
+	// an empty string and is treated like LevelNone.
 	color := levelColors[msg.Level]
 	if color == "" {
-		// トップレベルの blocks がある場合、Text は本文として描画されず
-		// プッシュ通知などのフォールバックにだけ使われます。
+		// With top-level blocks, Text is not rendered as the body; it serves
+		// only as the fallback for push notifications and the like.
 		payload.Text = msg.Title
 		payload.Blocks = blocks
 		return payload, nil
 	}
 
-	// attachment に包む場合は Text を空にします。blocks が attachment 側にあると
-	// Text はフォールバックではなくメッセージ本文として描画されるため、
-	// attachment 内の見出しブロックと合わせて見出しが 2 回出ます。
-	// フォールバックの役目は Attachment.Fallback が引き継ぐので、
-	// プッシュ通知の文言は失われません。
+	// When wrapping in an attachment, leave Text empty. With the blocks inside
+	// the attachment, Text is rendered as the message body rather than as a
+	// fallback, so together with the attachment's header block the heading
+	// would appear twice. Attachment.Fallback takes over the fallback role,
+	// so push notification wording is not lost.
 	payload.Attachments = []attachment{{
 		Color:    color,
 		Fallback: msg.Title,

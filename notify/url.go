@@ -5,12 +5,14 @@ import (
 	"slices"
 )
 
-// JoinURL は、ベース URL にパス要素を連結した URL を返します。base か elems のいずれかが
-// 空、または base を URL として解釈できない場合は空文字列です。
+// JoinURL returns base with the path elements joined onto it. It returns an
+// empty string when base or any of elems is empty, or when base cannot be
+// parsed as a URL.
 //
-// エラーではなく空文字列を返すのは、Body.Link と LinkOrField が「URL が空なら行ごと省く」
-// 契約を持っているためで、呼び出し側はリンク行を組むかどうかの分岐を書かずに済みます。
-// パス要素は url.JoinPath がエスケープしますが、スラッシュは区切りとして残ります。
+// It returns an empty string rather than an error because Body.Link and
+// LinkOrField promise to omit the line when the URL is empty, so callers
+// need no branch deciding whether to build the link line. url.JoinPath
+// escapes the path elements, but slashes stay as separators.
 //
 //	body.Link("History Detail", notify.JoinURL(serviceURL, "/web/history", jobID), jobID)
 func JoinURL(base string, elems ...string) string {

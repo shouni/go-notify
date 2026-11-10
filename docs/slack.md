@@ -1,106 +1,107 @@
-# Slack チャネル
+# Slack channel
 
-`slack` パッケージは、`notify.Notifier` の Slack Incoming Webhook 実装です。
-チャネル非依存の使い方は [README](../README.md) を参照してください。
+The `slack` package is the Slack Incoming Webhook implementation of `notify.Notifier`.
+For channel-agnostic usage, see the [README](../README.md).
 
 ```go
 notifier, err := slack.NewNotifier(httpClient.WithoutRetry(), os.Getenv("SLACK_WEBHOOK_URL"))
 ```
 
-公開しているのは `NewNotifier` だけです。投稿処理そのものは非公開で、
-呼び出し側は `notify.Notifier` として扱います。
+`NewNotifier` is the only export. The posting itself is unexported, and
+callers treat the result as a `notify.Notifier`.
 
 ---
 
-## ⚠️ リトライについて
+## ⚠️ Retries
 
-**Webhook への投稿は非冪等です。** 成功するたびに新しいメッセージが作られるため、
-Slack には届いたのにレスポンスを取りこぼしてリトライすると、同じ通知が二重に投稿されます。
+**Webhook posts are not idempotent.** Every successful one creates a new message, so if a
+post reaches Slack but the response is lost and the request is retried, the same notification is posted twice.
 
-本ライブラリはリトライ方針を持たず、渡された `httpkit.Poster` をそのまま使います。
-`httpkit.New(timeout)` は既定でリトライが有効なので、**他の用途と 1 つのクライアントを
-共有していると重複投稿が起こり得ます**。
+This library has no retry policy of its own and uses the `httpkit.Poster` it is given as is.
+`httpkit.New(timeout)` enables retry by default, so **sharing one client with other traffic
+can produce duplicate posts**.
 
-`WithoutRetry` で派生させれば、既存のクライアントのタイムアウト・SSRF 対策・
-コネクションプールを共有したまま、通知経路だけリトライを切れます。
+Deriving a client with `WithoutRetry` turns retries off for the notification path only, while
+still sharing the existing client's timeout, SSRF protection and connection pool.
 
 ```go
 notifier, err := slack.NewNotifier(httpClient.WithoutRetry(), webhookURL)
 ```
 
-クライアント全体でリトライが不要なら `httpkit.New(timeout, httpkit.WithNoRetry())` でも構いません。
+If no part of the client needs retries, `httpkit.New(timeout, httpkit.WithNoRetry())` works too.
 
-「通知の取りこぼし」と「重複投稿」のどちらを避けたいかはアプリケーション側の判断なので、
-ライブラリでは決めていません。
-
----
-
-## 🎨 記法の変換
-
-`Body` が出力する標準 Markdown を Slack mrkdwn に変換します。
-
-* `**太字**` → `*太字*`、`## 見出し` → `*見出し*`、`- 項目` → `• 項目`
-* `[表示テキスト](URL)` → `<URL|表示テキスト>`
-* プレーンテキスト中の `&` `<` `>` を実体参照へエスケープ
-  （エラー文中の `<nil>` がリンク構文と誤認されるのを防ぎます）
-
-行頭の `>` による引用記法は使えません。エスケープ対象の `>` と区別できないためです。
-
-リンクの URL には、対応の取れた括弧を 1 段まで含められます
-（`https://example.com/a_(b)_c` は 1 つのリンクになります）。
-対応の取れない括弧を含む URL は変換されず Markdown のまま出ます。
-壊れたリンクにするより、そのまま見えるほうが読めるためです。
-
-### エスケープしない場所
-
-エスケープ対象は**プレーンテキストのみ**です。`<URL|表示テキスト>` の内側や
-`<@U123>` などのメンションは Slack が構文として解釈済みのため変換しません。
-署名付き URL に含まれる `&` をエスケープすると署名が変わって 403 になるため、
-この境界は意図的なものです。
-
-### 変換しない場所
-
-フェンス（行頭の ` ``` `）で囲まれたコードブロックの中身は、記法変換の対象外です。
-`Body.Block` はコマンド出力やログを原文のまま見せるためのものなので、そこで `- ` が
-`• ` に、`**text**` が `*text*` に書き換わると、貼った本人が見たい原文が壊れます。
-
-ただし `&` `<` `>` のエスケープはブロック内でも必要なため、記法変換とは分けて適用します。
+Whether a lost notification or a duplicate post is worse is the application's decision,
+so the library does not make it.
 
 ---
 
-## 🎨 結果の種別（Level）の表示
+## 🎨 Markup conversion
 
-`notify.Message.Level` を attachment の色帯に落とします。
+The standard Markdown that `Body` emits is converted to Slack mrkdwn.
 
-| Level | 色 |
+* `**bold**` → `*bold*`, `## heading` → `*heading*`, `- item` → `• item`
+* `[text](URL)` → `<URL|text>`
+* `&` `<` `>` in plain text are escaped to entities
+  (so `<nil>` in an error string is not mistaken for link syntax)
+
+Blockquotes with `>` at the start of a line are unsupported, because they cannot be told apart from a `>` that needs escaping.
+
+A link URL may contain one level of balanced parentheses
+(`https://example.com/a_(b)_c` becomes a single link).
+A URL with unbalanced parentheses is not converted and stays as Markdown,
+because seeing it as is reads better than a broken link.
+
+### Where nothing is escaped
+
+Escaping applies to **plain text only**. The inside of `<URL|text>` and mentions such as
+`<@U123>` are already parsed by Slack as syntax, so they are left alone.
+Escaping the `&` in a signed URL changes the signature and yields a 403,
+so this boundary is deliberate.
+
+### Where nothing is converted
+
+The content of a code block enclosed in fences (` ``` ` at the start of a line) is exempt from markup conversion.
+`Body.Block` exists to show command output or logs verbatim, so rewriting `- ` to
+`• ` or `**text**` to `*text*` there would break the very text its author wants to see.
+
+Escaping `&` `<` `>` is still needed inside blocks, so it is applied separately from the markup conversion.
+
+---
+
+## 🎨 Showing the outcome level (Level)
+
+`notify.Message.Level` becomes the colour bar of an attachment.
+
+| Level | Colour |
 | :--- | :--- |
-| `LevelSuccess` | `good`（緑） |
-| `LevelFailure` | `danger`（赤） |
-| `LevelSkipped` | `warning`（黄） |
-| `LevelNone`（ゼロ値） | 色なし（トップレベル blocks のまま） |
+| `LevelSuccess` | `good` (green) |
+| `LevelFailure` | `danger` (red) |
+| `LevelSkipped` | `warning` (yellow) |
+| `LevelNone` (zero value) | none (stays as top-level blocks) |
 
-`LevelNone` を attachment に包まないのは、attachment が本文を少し内側に寄せるためです。
-種別を指定していない通知の見た目を変える理由がありません。
-
----
-
-## 🕒 フッター
-
-すべての通知の末尾に、送信時刻（JST）を表示するコンテキストブロックが自動で付きます。
-呼び出し側で時刻を本文へ入れる必要はありません。
+`LevelNone` is not wrapped in an attachment because an attachment indents the body slightly.
+There is no reason to change how notifications without a level look.
 
 ---
 
-## 📏 制限
+## 🕒 Footer
 
-* **見出しは必須**です。`Message.Title` が空の場合はエラーを返します。
-* 見出しはヘッダーブロックの上限である **150 文字**で切り詰めます。これは Slack の
-  上限そのもので、超えたまま送ると `invalid_blocks` が返り通知が丸ごと失われます。
-* 本文はセクションブロックの上限に収まるよう **2900 文字**で切り詰めます
-  （Slack の上限 3000 の手前に余裕を取っています）。
-* 切り詰めは書記素クラスタ単位です。ルーンで切ると濁点付きの文字や
-  ZWJ 絵文字が途中で分断されるためです。
-* 切り詰めがコードブロックの内側で起きた場合は、閉じフェンスを補います。
-  フェンスが開いたままだと以降の描画が崩れるためです。
-* 投稿者の表示名・アイコン・投稿先チャンネルは指定できません。Slack アプリ経由で
-  作成した Incoming Webhook は、これらを常にアプリ自身の設定から取ります。
+Every notification automatically ends with a context block showing the send time (JST),
+labelled 「送信時刻」. Callers do not need to put the time in the body.
+
+---
+
+## 📏 Limits
+
+* **A heading is required.** An empty `Message.Title` returns an error.
+* The heading is truncated at **150 characters**, the header block limit. That is Slack's
+  own limit, and sending over it returns `invalid_blocks` and loses the whole notification.
+* The body is split into section blocks of up to **2900 characters** each
+  (leaving a margin under Slack's limit of 3000), and only truncated when it would
+  need more than **20 blocks**: the 20th block is cut and ends with the truncation note.
+* Truncation is by grapheme cluster. Cutting by rune would split characters
+  with a dakuten or ZWJ emoji midway.
+* When truncation happens inside a code block, a closing fence is added,
+  because a fence left open breaks the rendering of everything after it.
+* The poster's display name, icon and destination channel cannot be set. An Incoming Webhook
+  created through a Slack app always takes these from the app's own settings.

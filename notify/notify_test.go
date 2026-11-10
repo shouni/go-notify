@@ -8,35 +8,36 @@ import (
 	"github.com/shouni/go-notify/notify"
 )
 
-// recorder は送信された Message を記録する Notifier です。
+// recorder is a Notifier that records the Messages sent to it.
 type recorder struct {
 	got  []notify.Message
 	fail error
 }
 
-// Notify は Message を記録し、fail が設定されていればそれを返します。
+// Notify records the Message and returns fail when it is set.
 func (r *recorder) Notify(_ context.Context, msg notify.Message) error {
 	r.got = append(r.got, msg)
 	return r.fail
 }
 
-// TestDisabledNotifierSendsNothing は、無効な Notifier が送信も失敗もしないことを検証します。
+// TestDisabledNotifierSendsNothing verifies that a disabled Notifier neither
+// sends nor fails.
 func TestDisabledNotifierSendsNothing(t *testing.T) {
 	if err := notify.Disabled().Notify(context.Background(), notify.Message{Title: "件名"}); err != nil {
 		t.Errorf("Notify() = %v, want nil", err)
 	}
 }
 
-// TestEnabled は Enabled の判定を検証します。
+// TestEnabled verifies what Enabled reports.
 func TestEnabled(t *testing.T) {
 	tests := []struct {
 		name     string
 		notifier notify.Notifier
 		want     bool
 	}{
-		{name: "nil は無効", notifier: nil, want: false},
-		{name: "Disabled は無効", notifier: notify.Disabled(), want: false},
-		{name: "実装は有効", notifier: &recorder{}, want: true},
+		{name: "nil is disabled", notifier: nil, want: false},
+		{name: "Disabled is disabled", notifier: notify.Disabled(), want: false},
+		{name: "implementation is enabled", notifier: &recorder{}, want: true},
 	}
 
 	for _, tt := range tests {
@@ -48,7 +49,7 @@ func TestEnabled(t *testing.T) {
 	}
 }
 
-// TestNotifierFunc は関数アダプターが Notifier として機能することを検証します。
+// TestNotifierFunc verifies that the function adapter works as a Notifier.
 func TestNotifierFunc(t *testing.T) {
 	var got notify.Message
 	var fn notify.Notifier = notify.NotifierFunc(func(_ context.Context, msg notify.Message) error {
@@ -60,11 +61,12 @@ func TestNotifierFunc(t *testing.T) {
 		t.Fatalf("Notify() = %v, want nil", err)
 	}
 	if got.Title != "件名" || got.Body != "本文" {
-		t.Errorf("受け取った Message = %+v", got)
+		t.Errorf("received Message = %+v", got)
 	}
 }
 
-// TestNotifierFuncPropagatesError は関数アダプターがエラーを伝えることを検証します。
+// TestNotifierFuncPropagatesError verifies that the function adapter passes
+// the error back.
 func TestNotifierFuncPropagatesError(t *testing.T) {
 	wantErr := errors.New("送信失敗")
 	fn := notify.NotifierFunc(func(_ context.Context, _ notify.Message) error { return wantErr })

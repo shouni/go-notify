@@ -15,8 +15,9 @@ import (
 	"github.com/shouni/go-notify/slack"
 )
 
-// sentMessage は、送信されたペイロードを Slack が受け取る JSON の形で読み直したものです。
-// ライブラリ内部の型ではなく wire の形で検査するので、型を差し替えてもテストは変わりません。
+// sentMessage is the sent payload read back in the JSON shape Slack
+// receives. Tests check the wire shape rather than the library's internal
+// types, so replacing those types does not change the tests.
 type sentMessage struct {
 	Text        string `json:"text"`
 	Attachments []struct {
@@ -35,14 +36,14 @@ type sentBlock struct {
 	} `json:"text"`
 }
 
-// stubPoster は送信ペイロードを記録する httpkit.Poster のスタブです。
+// stubPoster is an httpkit.Poster stub that records the sent payload.
 type stubPoster struct {
 	sent sentMessage
 	raw  []byte
 	fail error
 }
 
-// PostJSON は送信されたペイロードを JSON に直してから記録します。
+// PostJSON records the sent payload after converting it to JSON.
 func (s *stubPoster) PostJSON(_ context.Context, _ string, data any) (*httpkit.Result, error) {
 	raw, err := json.Marshal(data)
 	if err != nil {
@@ -62,8 +63,8 @@ func (s *stubPoster) Post(_ context.Context, _, _ string, _ []byte) (*httpkit.Re
 	return nil, nil
 }
 
-// blockSet は送信済みメッセージのブロック一式を返します。
-// 種別付きの通知は attachment に包まれるため、両方の置き場所を見ます。
+// blockSet returns the sent message's blocks. A notification with a level
+// is wrapped in an attachment, so both places are checked.
 func (s *stubPoster) blockSet(t *testing.T) []sentBlock {
 	t.Helper()
 	if len(s.sent.Blocks) > 0 {
@@ -72,11 +73,11 @@ func (s *stubPoster) blockSet(t *testing.T) []sentBlock {
 	if len(s.sent.Attachments) == 1 {
 		return s.sent.Attachments[0].Blocks
 	}
-	t.Fatal("Blocks も Attachments も設定されていません")
+	t.Fatal("neither Blocks nor Attachments is set")
 	return nil
 }
 
-// headerText は送信済みメッセージのヘッダーブロックの文字列を返します。
+// headerText returns the text of the sent message's header block.
 func (s *stubPoster) headerText(t *testing.T) string {
 	t.Helper()
 	for _, b := range s.blockSet(t) {
@@ -84,11 +85,11 @@ func (s *stubPoster) headerText(t *testing.T) string {
 			return b.Text.Text
 		}
 	}
-	t.Fatal("ヘッダーブロックが見つかりません")
+	t.Fatal("header block not found")
 	return ""
 }
 
-// sectionText は送信済みメッセージの最初のセクションブロック本文を返します。
+// sectionText returns the text of the sent message's first section block.
 func (s *stubPoster) sectionText(t *testing.T) string {
 	t.Helper()
 	for _, b := range s.blockSet(t) {
@@ -96,21 +97,21 @@ func (s *stubPoster) sectionText(t *testing.T) string {
 			return b.Text.Text
 		}
 	}
-	t.Fatal("セクションブロックが見つかりません")
+	t.Fatal("section block not found")
 	return ""
 }
 
-// TestNewNotifierDisabledOnBlankWebhookURL は、Webhook URL が未設定なら
-// エラーではなく無効な Notifier になることを検証します。
-// 通知先の未設定はアプリケーションの起動を妨げる理由にならないためです。
+// TestNewNotifierDisabledOnBlankWebhookURL verifies that an unset webhook
+// URL yields a disabled Notifier rather than an error. An unset
+// destination is no reason to stop an application from starting.
 func TestNewNotifierDisabledOnBlankWebhookURL(t *testing.T) {
 	tests := []struct {
 		name       string
 		webhookURL string
 	}{
-		{name: "空文字", webhookURL: ""},
-		{name: "空白のみ", webhookURL: "   "},
-		{name: "改行のみ", webhookURL: "\n"},
+		{name: "empty", webhookURL: ""},
+		{name: "whitespace only", webhookURL: "   "},
+		{name: "newline only", webhookURL: "\n"},
 	}
 
 	for _, tt := range tests {
@@ -129,15 +130,16 @@ func TestNewNotifierDisabledOnBlankWebhookURL(t *testing.T) {
 	}
 }
 
-// TestNewNotifierRequiresClientWhenConfigured は、Webhook URL があるのに
-// HTTP クライアントが nil の場合はエラーになることを検証します。
+// TestNewNotifierRequiresClientWhenConfigured verifies that a configured
+// webhook URL with a nil HTTP client is an error.
 func TestNewNotifierRequiresClientWhenConfigured(t *testing.T) {
 	if _, err := slack.NewNotifier(nil, "https://hooks.slack.com/services/test"); err == nil {
 		t.Error("NewNotifier() = nil, want error")
 	}
 }
 
-// TestNewNotifierEnabled は、設定が揃っていれば送信可能な Notifier になることを検証します。
+// TestNewNotifierEnabled verifies that a complete configuration yields a
+// Notifier that can send.
 func TestNewNotifierEnabled(t *testing.T) {
 	n, err := slack.NewNotifier(&stubPoster{}, "https://hooks.slack.com/services/test")
 	if err != nil {
@@ -148,7 +150,8 @@ func TestNewNotifierEnabled(t *testing.T) {
 	}
 }
 
-// TestNotifyUsesTitleAsHeader は Message.Title が見出しになることを検証します。
+// TestNotifyUsesTitleAsHeader verifies that Message.Title becomes the
+// heading.
 func TestNotifyUsesTitleAsHeader(t *testing.T) {
 	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
@@ -164,11 +167,12 @@ func TestNotifyUsesTitleAsHeader(t *testing.T) {
 	}
 }
 
-// TestNotifyTruncatesLongTitle は、長すぎる見出しがヘッダーブロックの上限に
-// 収まることを検証します。
+// TestNotifyTruncatesLongTitle verifies that an overlong heading is cut to
+// fit the header block limit.
 //
-// Slack のヘッダーブロックは 150 文字までで、超えたまま送ると invalid_blocks が
-// 返り通知が丸ごと失われます。本文だけでなく見出しも守る必要があります。
+// Slack's header block allows 150 characters; sent over that, Slack answers
+// invalid_blocks and the whole notification is lost. The heading needs
+// protecting as much as the body.
 func TestNotifyTruncatesLongTitle(t *testing.T) {
 	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
@@ -182,14 +186,16 @@ func TestNotifyTruncatesLongTitle(t *testing.T) {
 	}
 
 	if got := len([]rune(stub.headerText(t))); got > 150 {
-		t.Errorf("ヘッダーの文字数 = %d, want <= 150", got)
+		t.Errorf("header length = %d, want <= 150", got)
 	}
 }
 
-// TestNotifyRequiresTitle は、見出し未指定の通知が送信されずエラーになることを検証します。
+// TestNotifyRequiresTitle verifies that a notification without a heading is
+// not sent and returns an error.
 //
-// 本文の 1 行目から見出しを推測する機能は持ちません。何を見出しにするかは
-// 通知の意味を決める判断で、本文の先頭行がそれである保証は無いためです。
+// There is no guessing a heading from the body's first line. Choosing the
+// heading decides what the notification means, and nothing guarantees the
+// first line is it.
 func TestNotifyRequiresTitle(t *testing.T) {
 	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
@@ -201,20 +207,21 @@ func TestNotifyRequiresTitle(t *testing.T) {
 		t.Error("Notify() = nil, want error")
 	}
 	if stub.sent.Text != "" {
-		t.Errorf("見出し無しで送信されました: %q", stub.sent.Text)
+		t.Errorf("sent without a heading: %q", stub.sent.Text)
 	}
 }
 
-// TestNotifyLevelSetsAttachmentColor は、結果の種別が attachment の色になることを検証します。
+// TestNotifyLevelSetsAttachmentColor verifies that the outcome level becomes
+// the attachment colour.
 func TestNotifyLevelSetsAttachmentColor(t *testing.T) {
 	tests := []struct {
 		name  string
 		level notify.Level
 		want  string
 	}{
-		{name: "成功は good", level: notify.LevelSuccess, want: "good"},
-		{name: "失敗は danger", level: notify.LevelFailure, want: "danger"},
-		{name: "スキップは warning", level: notify.LevelSkipped, want: "warning"},
+		{name: "success is good", level: notify.LevelSuccess, want: "good"},
+		{name: "failure is danger", level: notify.LevelFailure, want: "danger"},
+		{name: "skipped is warning", level: notify.LevelSkipped, want: "warning"},
 	}
 
 	for _, tt := range tests {
@@ -231,24 +238,26 @@ func TestNotifyLevelSetsAttachmentColor(t *testing.T) {
 			}
 
 			if len(stub.sent.Attachments) != 1 {
-				t.Fatalf("attachment 数 = %d, want 1", len(stub.sent.Attachments))
+				t.Fatalf("attachment count = %d, want 1", len(stub.sent.Attachments))
 			}
 			if got := stub.sent.Attachments[0].Color; got != tt.want {
 				t.Errorf("Color = %q, want %q", got, tt.want)
 			}
 			if len(stub.sent.Blocks) > 0 {
-				t.Error("attachment 使用時にトップレベル Blocks が設定されています")
+				t.Error("top-level Blocks set while using an attachment")
 			}
 		})
 	}
 }
 
-// TestNotifyLevelDoesNotDuplicateTitle は、色付きの通知で見出しが 2 回出ないことを検証します。
+// TestNotifyLevelDoesNotDuplicateTitle verifies that a coloured notification
+// does not show its heading twice.
 //
-// blocks が attachment 側にあると、トップレベルの Text はフォールバックではなく
-// メッセージ本文として描画されます。Text に見出しを入れたままだと、attachment 内の
-// 見出しブロックと合わせて Slack 上に見出しが 2 回並びます。
-// フォールバックは Attachment.Fallback が担うため、プッシュ通知の文言は残ります。
+// With the blocks inside an attachment, top-level Text is rendered as the
+// message body rather than as a fallback. Leaving the heading in Text puts
+// it in Slack twice, alongside the attachment's header block.
+// Attachment.Fallback handles the fallback, so push notification wording
+// remains.
 func TestNotifyLevelDoesNotDuplicateTitle(t *testing.T) {
 	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
@@ -262,19 +271,19 @@ func TestNotifyLevelDoesNotDuplicateTitle(t *testing.T) {
 	}
 
 	if stub.sent.Text != "" {
-		t.Errorf("Text = %q, want empty（attachment 内の見出しと重複します）", stub.sent.Text)
+		t.Errorf("Text = %q, want empty (it duplicates the heading inside the attachment)", stub.sent.Text)
 	}
 	if len(stub.sent.Attachments) != 1 {
-		t.Fatalf("attachment 数 = %d, want 1", len(stub.sent.Attachments))
+		t.Fatalf("attachment count = %d, want 1", len(stub.sent.Attachments))
 	}
 	if got := stub.sent.Attachments[0].Fallback; got != msg.Title {
 		t.Errorf("Fallback = %q, want %q", got, msg.Title)
 	}
 }
 
-// TestNotifyWithoutLevelKeepsTopLevelBlocks は、種別未指定の通知が
-// attachment に包まれず従来どおり投稿されることを検証します。
-// 既存の通知の見た目を変えないための境界です。
+// TestNotifyWithoutLevelKeepsTopLevelBlocks verifies that a notification
+// without a level is not wrapped in an attachment and posts as before. It is
+// the boundary that keeps existing notifications looking the same.
 func TestNotifyWithoutLevelKeepsTopLevelBlocks(t *testing.T) {
 	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
@@ -287,14 +296,15 @@ func TestNotifyWithoutLevelKeepsTopLevelBlocks(t *testing.T) {
 	}
 
 	if len(stub.sent.Attachments) != 0 {
-		t.Errorf("attachment 数 = %d, want 0", len(stub.sent.Attachments))
+		t.Errorf("attachment count = %d, want 0", len(stub.sent.Attachments))
 	}
 	if len(stub.sent.Blocks) == 0 {
-		t.Error("トップレベル Blocks が設定されていません")
+		t.Error("top-level Blocks not set")
 	}
 }
 
-// TestNotifyPropagatesSendError は送信失敗が呼び出し元へ伝わることを検証します。
+// TestNotifyPropagatesSendError verifies that a send failure reaches the
+// caller.
 func TestNotifyPropagatesSendError(t *testing.T) {
 	stub := &stubPoster{fail: errors.New("network error")}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
@@ -307,15 +317,16 @@ func TestNotifyPropagatesSendError(t *testing.T) {
 	}
 }
 
-// TestNotifyRedactsWebhookURLInSendError は、送信失敗の文面に Webhook URL が載らないことを
-// 検証します。URL はそれ自体が投稿の認可で、HTTP クライアントは失敗の文面に宛先を含め、
-// 呼び出し側はそのエラーをそのままログに出します。原因の判定（errors.Is）は伏せた後も
-// 効かなければなりません。
+// TestNotifyRedactsWebhookURLInSendError verifies that the webhook URL does
+// not appear in a send failure's text. The URL is itself the authorisation
+// to post, HTTP clients put the destination into failure text, and callers
+// log that error as is. Checking the cause (errors.Is) must still work after
+// redaction.
 func TestNotifyRedactsWebhookURLInSendError(t *testing.T) {
 	const webhookURL = "https://hooks.slack.com/services/T000/B000/SECRETTOKEN"
 	cause := errors.New("connection refused")
-	// httpkit と net/http が返す形。文面の 2 箇所に URL が入る。
-	stub := &stubPoster{fail: fmt.Errorf("HTTPリクエスト失敗 (URL: %s): %w",
+	// The shape httpkit and net/http return: the URL appears twice in the text.
+	stub := &stubPoster{fail: fmt.Errorf("HTTP request failed (URL: %s): %w",
 		webhookURL, &url.Error{Op: "Post", URL: webhookURL, Err: cause})}
 	n, err := slack.NewNotifier(stub, webhookURL)
 	if err != nil {
@@ -344,9 +355,9 @@ func TestNotifyRedactsWebhookURLInSendError(t *testing.T) {
 	}
 }
 
-// TestNotifyRendersBodyAsMrkdwn は、notify.Body が組み立てた汎用 Markdown が
-// Slack mrkdwn に変換されて送信されることを検証します。
-// notify パッケージをチャネル非依存に保つための境界そのものです。
+// TestNotifyRendersBodyAsMrkdwn verifies that the generic Markdown built by
+// notify.Body is converted to Slack mrkdwn before sending. It is the very
+// boundary that keeps the notify package channel-agnostic.
 func TestNotifyRendersBodyAsMrkdwn(t *testing.T) {
 	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
@@ -367,15 +378,15 @@ func TestNotifyRendersBodyAsMrkdwn(t *testing.T) {
 		"*Title:* サンプルタイトル\n" +
 		"*History Detail:* <https://example.com/web/history/job-1|job-1>"
 	if got := stub.sectionText(t); got != want {
-		t.Errorf("セクション本文 =\n%q\nwant\n%q", got, want)
+		t.Errorf("section text =\n%q\nwant\n%q", got, want)
 	}
 }
 
-// TestNotifyRendersHeadingAndBulletAsMrkdwn は、Heading と Bullet が
-// Slack の記法に変換されることを検証します。
+// TestNotifyRendersHeadingAndBulletAsMrkdwn verifies that Heading and Bullet
+// are converted to Slack's markup.
 //
-// 呼び出し側が "## " や "- " を手書きしなくても済むことが両メソッドの目的なので、
-// Body の出力が実際に変換される経路をここで固定します。
+// Both methods exist so that callers need not write "## " or "- " by hand,
+// so the path by which Body's output is actually converted is pinned here.
 func TestNotifyRendersHeadingAndBulletAsMrkdwn(t *testing.T) {
 	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
@@ -398,12 +409,12 @@ func TestNotifyRendersHeadingAndBulletAsMrkdwn(t *testing.T) {
 		"• scene_01.png\n" +
 		"• scene_02.png"
 	if got := stub.sectionText(t); got != want {
-		t.Errorf("セクション本文 =\n%q\nwant\n%q", got, want)
+		t.Errorf("section text =\n%q\nwant\n%q", got, want)
 	}
 }
 
-// TestNotifyRendersErrorBlockAsMrkdwn は、エラー節がコードブロックのまま
-// 変換されることを検証します。
+// TestNotifyRendersErrorBlockAsMrkdwn verifies that the error section is
+// converted to mrkdwn.
 func TestNotifyRendersErrorBlockAsMrkdwn(t *testing.T) {
 	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
@@ -419,16 +430,16 @@ func TestNotifyRendersErrorBlockAsMrkdwn(t *testing.T) {
 
 	got := stub.sectionText(t)
 	if !strings.Contains(got, "*エラー内容:*\nタイムアウトしました") {
-		t.Errorf("エラー節が mrkdwn に変換されていません: %q", got)
+		t.Errorf("error section not converted to mrkdwn: %q", got)
 	}
 }
 
-// TestNotifyKeepsCodeBlockContentVerbatim は、notify.Body.Block に渡した内容が
-// Slack へ届くまで書き換えられないことを検証します。
+// TestNotifyKeepsCodeBlockContentVerbatim verifies that content passed to
+// notify.Body.Block reaches Slack unrewritten.
 //
-// Block はコマンド出力やログを原文のまま見せるための入口なので、
-// ラベル側が mrkdwn に変換される一方でブロックの中身は素通しになる、
-// という非対称がここでの正しい振る舞いです。
+// Block is the way in for showing command output or logs verbatim, so the
+// asymmetry is correct here: the label is converted to mrkdwn while the
+// block's content passes through untouched.
 func TestNotifyKeepsCodeBlockContentVerbatim(t *testing.T) {
 	stub := &stubPoster{}
 	n, err := slack.NewNotifier(stub, "https://hooks.slack.com/services/test")
@@ -448,6 +459,6 @@ func TestNotifyKeepsCodeBlockContentVerbatim(t *testing.T) {
 		"*実行ログ:*\n" +
 		"```\nusage: cmd [options]\n  - --flag  **必須**\n```"
 	if got := stub.sectionText(t); got != want {
-		t.Errorf("セクション本文 =\n%q\nwant\n%q", got, want)
+		t.Errorf("section text =\n%q\nwant\n%q", got, want)
 	}
 }

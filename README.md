@@ -8,37 +8,38 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/shouni/go-notify.svg)](https://pkg.go.dev/github.com/shouni/go-notify)
 
-## 🚀 概要 (About) - 本文を組み立てるコードに、チャネルを意識させない
+English | [日本語](README.ja.md)
 
-**Go Notify** は、非同期パイプラインの実行結果を通知するための Go ライブラリです。
-CLI は持たず、アプリケーションに組み込んで使います。
+## 🚀 About - Code that builds a body never has to know the channel
 
-通知チャネルに依存しない `notify` パッケージと、その実装である `slack` パッケージに
-分かれており、**本文を組み立てるコードはチャネルを意識しません**。
+**Go Notify** is a Go library for notifying people of the results of asynchronous pipelines.
+It has no CLI; you embed it in your application.
 
-Slack 固有の話（記法の変換・リトライ・制限）は [docs/slack.md](docs/slack.md) にまとめてあります。
+It is split into the channel-agnostic `notify` package and its implementation, the `slack`
+package, so **the code that builds a body never has to know the channel**.
 
-### 主要な特徴
+Slack-specific matters (markup conversion, retries, limits) are collected in [docs/slack.md](docs/slack.md).
 
-* **チャネル非依存の本文組み立て**
-  `notify.Body` は標準的な Markdown を出力し、Slack 固有の mrkdwn 記法への変換は
-  `slack` パッケージが担当します。新しいチャネルを追加しても呼び出し側は変わりません。
-* **空値の自動スキップ**
-  `Body` の各メソッドは値が空なら何も書き込みません。項目ごとの `if` が不要になります。
-* **通知先未設定は「無効」であってエラーではない**
-  Webhook URL が空なら `notify.Disabled()` が返り、以降の呼び出しは黙って成功します。
-  通知はアプリケーションの主目的ではなく、宛先の未設定で起動を止める理由はありません。
-* **堅牢な通信基盤**
-  外部通信はすべて [`go-http-kit`](https://github.com/shouni/go-http-kit) の
-  `httpkit.Poster` 経由です。タイムアウト・SSRF 対策・リトライ方針は
-  渡されたクライアントのものをそのまま使い、本パッケージ自身は
-  リトライも `http.Client` も持ちません。
+## ✨ Features
 
-## 🚦 使い方 (Usage)
+* **Channel-agnostic body building**
+  `notify.Body` emits standard Markdown, and the `slack` package converts it to Slack's own
+  mrkdwn. Adding a new channel does not change callers.
+* **Empty values are skipped automatically**
+  Each `Body` method writes nothing when its value is empty, so no per-field `if` is needed.
+* **An unset destination means "disabled", not an error**
+  A blank webhook URL returns `notify.Disabled()`, and later calls silently succeed.
+  Notifying is not an application's main purpose, and an unset destination is no reason to stop it from starting.
+* **A robust transport**
+  All outbound traffic goes through [`go-http-kit`](https://github.com/shouni/go-http-kit)'s
+  `httpkit.Poster`. Timeouts, SSRF protection and the retry policy are those of the client
+  you pass in; this package itself has neither retries nor an `http.Client`.
 
-`go get github.com/shouni/go-notify` で入れます。
+## 🚦 Usage
 
-### 基本
+Install it with `go get github.com/shouni/go-notify`.
+
+### Basics
 
 ```go
 import (
@@ -46,7 +47,7 @@ import (
     "github.com/shouni/go-notify/slack"
 )
 
-// Webhook 投稿は非冪等なので、リトライは切っておくのが安全です（docs/slack.md を参照）
+// Webhook posts are not idempotent, so turning retries off is the safe choice (see docs/slack.md)
 notifier, err := slack.NewNotifier(httpClient.WithoutRetry(), os.Getenv("SLACK_WEBHOOK_URL"))
 if err != nil {
     return err
@@ -56,113 +57,115 @@ body := notify.NewBody().
     Code("Command", task.Command).
     Code("Job ID", task.JobID).
     Link("History Detail", detailURL, task.JobID).
-    Field("Title", task.Title)          // Title が空なら行ごと出ません
+    Field("Title", task.Title)          // no line at all when Title is empty
 
 err = notifier.Notify(ctx, notify.Message{
-    Title: "✅ 生成が完了しました",
+    Title: "✅ Generation finished",
     Body:  body.String(),
 })
 ```
 
-`Message.Title` は必須です。空のまま送るとエラーになります
-（本文の先頭行から見出しを推測することはしません）。
+`Message.Title` is required. Sending it empty is an error
+(no heading is guessed from the body's first line).
 
-### パイプライン通知
+### Pipeline notifications
 
-成功・失敗・スキップで見出しだけが変わる、という定型を `notify.Pipeline` が担います。
+`notify.Pipeline` handles the fixed pattern where only the heading changes between success, failure and skip.
 
 ```go
 pipeline := notify.NewPipeline(notifier, notify.Titles{
-    Success: "✅ 生成が完了しました",
-    Failure: "❌ 生成に失敗しました",
-    Skipped: "⏭️ 差分がないためスキップしました",
+    Success: "✅ Generation finished",
+    Failure: "❌ Generation failed",
+    Skipped: "⏭️ Skipped: nothing changed",
 })
 
-// 本文の組み立てが重い場合は事前に打ち切れます
+// Bail out early when building the body is expensive
 if !pipeline.Enabled() {
     return nil
 }
 
 body := notify.NewBody().Code("Job ID", jobID)
 
-pipeline.Success(ctx, body)                 // 本文はそのまま
-pipeline.Failure(ctx, body, err)            // 本文末尾に「エラー内容」を追記
-pipeline.Skipped(ctx, body, reason)         // reason が非 nil なら「理由」を追記
+pipeline.Success(ctx, body)                 // body as is
+pipeline.Failure(ctx, body, err)            // appends 「エラー内容」 (error) to the end of the body
+pipeline.Skipped(ctx, body, reason)         // appends 「理由」 (reason) when reason is non-nil
 ```
 
-`Failure` と `Skipped` の追記先はコピーなので、**渡した `Body` は書き換わりません**。
-上のように 1 つの `Body` を結果ごとに渡し直しても、スキップ通知に前の
-「エラー内容」が残る、といったことは起きません。
+`Failure` and `Skipped` append to a copy, so **the `Body` you pass in is not modified**.
+Passing one `Body` again for each outcome, as above, does not leave the earlier
+「エラー内容」 in the skipped notification.
 
-見出しを実行時の条件で切り替えたい場合（コマンド種別ごとに文言を変える等）は、
-`WithTitles` で見出しだけを差し替えた `Pipeline` を派生させます。
-元の `Pipeline` は変更されないので、1 つ保持したまま呼び出しごとに切り替えられます。
+The two section labels, 「エラー内容」 and 「理由」, are Japanese: they are what the library's owner reads in Slack.
+
+To switch headings on a run-time condition (different wording per command, say), derive a
+`Pipeline` with only the headings replaced through `WithTitles`.
+The original `Pipeline` is not modified, so you can keep one and switch per call.
 
 ```go
 pipeline.WithTitles(notify.Titles{Success: titleFor(cmd)}).Success(ctx, body)
 ```
 
-### Body の書き味
+### Writing a Body
 
-各メソッドが 1 行ずつ Markdown を書き足します（どのメソッドが何を出すかは godoc）。
-**値が空の場合は行ごと出力されません。**「この項目があれば書く」という `if` を
-項目の数だけ並べずに済むのはこのためです。`Error` / `Block` は値が無ければ `N/A` を表示します。
-1 行も書き込まれなかった `Body` の `String()` は `N/A` を返します。
-`Heading` / `Error` / `Block` は、本文が既にある場合は 1 行空けてから追記します。
+Each method appends one line of Markdown (see the godoc for what each emits).
+**A line with an empty value is not written at all.** That is what saves you lining up
+one "write this field if present" `if` per field. `Error` / `Block` show `N/A` when there is no value.
+`String()` on a `Body` with nothing written returns `N/A`.
+`Heading` / `Error` / `Block` leave a blank line first when the body already has content.
 
-件数が可変の値を並べるときは `Field` を繰り返すより `Bullet`、
-項目が多くて意味のまとまりで区切りたいときは `Heading` を使います。
-`- ` や `## ` を `Text` に手書きする必要はありません。
+For a variable number of values use `Bullet` rather than repeating `Field`, and use
+`Heading` when many fields read better split into groups.
+There is no need to hand-write `- ` or `## ` through `Text`.
 
-`Block` の中身は各チャネルの記法変換の対象外で、`- ` や `**` は書き換わりません
-（詳細は [docs/slack.md](docs/slack.md)）。
+The content of a `Block` is exempt from each channel's markup conversion, so `- ` and `**` are not rewritten
+(details in [docs/slack.md](docs/slack.md)).
 
-### リンク先 URL を組み立てる
+### Building link URLs
 
-`Link` は URL が空なら行ごと省きます。その契約に合わせて URL を組み立てるのが
-`notify.JoinURL` です。ベースが空・パス要素が空・URL として解釈できない、の
-いずれでも空文字列を返すので、呼び出し側にリンク行を出すかどうかの分岐が要りません。
+`Link` omits the whole line when the URL is empty. `notify.JoinURL` builds URLs to match
+that contract. It returns an empty string when the base is empty, a path element is empty,
+or the result cannot be parsed as a URL, so callers need no branch deciding whether to write the link line.
 
 ```go
 body.Link("History Detail", notify.JoinURL(serviceURL, "/web/history", jobID), jobID)
-// serviceURL か jobID が空なら URL は空文字列 → この行ごと出ません
+// empty serviceURL or jobID → empty URL → no line at all
 ```
 
-パス要素は URL エスケープされます（スラッシュは区切りとして残るので、
-`"/web/history"` のようなパスをそのまま渡せます）。
+Path elements are URL-escaped (slashes stay as separators, so you can pass
+a path such as `"/web/history"` as is).
 
-### 値をコードスパンにする
+### Making a value a code span
 
-`Code` は「ラベル + 単一の値」しか作れません。単位や絵文字を添えたい、
-1 行に複数のコードスパンを並べたい場合は `CodeSpan` を使います。
+`Code` builds only "label + one value". To add a unit or an emoji, or to put
+several code spans on one line, use `CodeSpan`.
 
-Markdown 記法を知る場所を `notify` パッケージに留めるための出口なので、
-呼び出し側でバックティックを直接書かないでください。
+It is the way out that keeps knowledge of Markdown inside the `notify` package,
+so do not write backticks directly in calling code.
 
 ```go
 body.Field("Seed", notify.CodeSpan(strconv.Itoa(seed))+" 🎲")
-body.Field("ブランチ", notify.CodeSpan(base)+" ← "+notify.CodeSpan(feature))
+body.Field("Branch", notify.CodeSpan(base)+" ← "+notify.CodeSpan(feature))
 ```
 
-### 結果の種別（Level）
+### Outcome level (Level)
 
-`Message.Level` は結果の種別を運びます。`Pipeline` を使えば自動で設定されるため、
-呼び出し側で指定する必要はありません。
+`Message.Level` carries the kind of outcome. `Pipeline` sets it automatically,
+so callers do not need to.
 
-どう表現するかは各チャネルの判断です（Slack は attachment の色帯にします）。
-見出しに `✅` `❌` を書いて結果を示す必要はなくなりますが、残しても構いません。
-`Message` を直接組み立てている場合は `LevelNone` のままなので、表示は変わりません。
+How to present it is up to each channel (Slack uses an attachment's colour bar).
+You no longer need `✅` `❌` in the heading to show the outcome, though you may keep them.
+A `Message` built by hand stays at `LevelNone`, so its appearance does not change.
 
-## 📦 パッケージ構成 (Package Structure)
+## 📦 Package Structure
 
-| パッケージ | 役割 |
+| Package | Role |
 | :--- | :--- |
-| [`notify`](https://pkg.go.dev/github.com/shouni/go-notify/notify) | チャネル非依存の抽象。`Notifier` / `Message` / `Body` / `Pipeline` |
-| [`slack`](https://pkg.go.dev/github.com/shouni/go-notify/slack) | Slack Incoming Webhook 実装 → [docs/slack.md](docs/slack.md) |
+| [`notify`](https://pkg.go.dev/github.com/shouni/go-notify/notify) | The channel-agnostic abstraction: `Notifier` / `Message` / `Body` / `Pipeline` |
+| [`slack`](https://pkg.go.dev/github.com/shouni/go-notify/slack) | Slack Incoming Webhook implementation → [docs/slack.md](docs/slack.md) |
 
-`slack` は `notify` に依存しますが、逆はありません。新しいチャネルを追加する場合は
-`notify.Notifier` を実装したサブパッケージを足すだけで、`notify` 側の変更は不要です。
+`slack` depends on `notify`, never the reverse. Adding a new channel means adding a subpackage
+that implements `notify.Notifier`; `notify` itself needs no change.
 
-## 📜 ライセンス (License)
+## 📜 License
 
-このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
+This project is released under the [MIT License](https://opensource.org/licenses/MIT).

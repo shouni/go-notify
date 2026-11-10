@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// TestTruncate 関数のテスト
+// TestTruncateGraphemes tests truncateGraphemes.
 func TestTruncateGraphemes(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -14,84 +14,84 @@ func TestTruncateGraphemes(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "エッジケース: maxLenが負の値 (-1)", // ★ テスト名を修正
+			name:     "edge case: negative maxLen (-1)", // ★ test name corrected
 			input:    "テストテキスト",
 			maxLen:   -1,
 			suffix:   "...",
-			expected: "", // ★ 期待値を修正 (空文字列を返す)
+			expected: "", // ★ expected value corrected (returns an empty string)
 		},
 		{
-			name:     "エッジケース: maxLenがゼロ (0)", // ★ テスト名を修正
+			name:     "edge case: zero maxLen (0)", // ★ test name corrected
 			input:    "テストテキスト",
 			maxLen:   0,
 			suffix:   "...",
-			expected: "", // ★ 期待値を修正 (空文字列を返す)
+			expected: "", // ★ expected value corrected (returns an empty string)
 		},
 		{
-			name:     "エッジケース: maxLenがゼロ (0) かつ空文字列",
+			name:     "edge case: zero maxLen (0) with empty string",
 			input:    "",
 			maxLen:   0,
 			suffix:   "...",
-			expected: "", // 期待値は元々正しい
+			expected: "", // the expected value was already correct
 		},
 		{
-			name:     "最大長より短い文字列",
+			name:     "shorter than max length",
 			input:    "Hello",
 			maxLen:   10,
 			suffix:   "...",
 			expected: "Hello",
 		},
 		{
-			name:     "最大長と等しい文字列",
+			name:     "equal to max length",
 			input:    "HelloWorld",
 			maxLen:   10,
 			suffix:   "...",
 			expected: "HelloWorld",
 		},
 		{
-			name:     "最大長を超える文字列 (サフィックスあり)",
+			name:     "longer than max length (with suffix)",
 			input:    "This is a long text.",
 			maxLen:   10,
 			suffix:   "...",
 			expected: "This is a...",
 		},
 		{
-			name:     "最大長を超える文字列 (サフィックスなし)",
+			name:     "longer than max length (no suffix)",
 			input:    "This is a long text.",
 			maxLen:   10,
 			suffix:   "",
 			expected: "This is a",
 		},
 		{
-			name:     "切り詰めた末尾がスペースの場合",
+			name:     "truncation ends on a space",
 			input:    "ABCDEFGHI JKLM",
 			maxLen:   11,
 			suffix:   "...",
 			expected: "ABCDEFGHI J...",
 		},
 		{
-			name:     "空文字列",
+			name:     "empty string",
 			input:    "",
 			maxLen:   5,
 			suffix:   "...",
 			expected: "",
 		},
 		{
-			name:     "マルチバイト文字を含む (rune長で切り詰め)",
+			name:     "multibyte text (truncated by rune length)",
 			input:    "あいうえお",
 			maxLen:   3,
 			suffix:   "...",
 			expected: "あいう...",
 		},
 		{
-			name:     "マルチバイト文字を最大長より多く指定",
+			name:     "multibyte text with max length above its length",
 			input:    "あいうえお",
 			maxLen:   7,
 			suffix:   "...",
 			expected: "あいうえお",
 		},
 		{
-			name:     "末尾に空白がある日本語",
+			name:     "Japanese with trailing whitespace",
 			input:    "テストテキスト　　です。 ",
 			maxLen:   6,
 			suffix:   "...",
@@ -103,15 +103,16 @@ func TestTruncateGraphemes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			actual := truncateGraphemes(tt.input, tt.maxLen, tt.suffix)
 			if actual != tt.expected {
-				t.Errorf("truncateGraphemes(%q, %d, %q) = %q, 期待値 %q", tt.input, tt.maxLen, tt.suffix, actual, tt.expected)
+				t.Errorf("truncateGraphemes(%q, %d, %q) = %q, want %q", tt.input, tt.maxLen, tt.suffix, actual, tt.expected)
 			}
 		})
 	}
 }
 
-// TestTruncatePreservesGraphemeClusters は、複数の rune で1文字を構成する文字列を
-// 分断しないことを検証します。rune 単位で切っていた頃は、いずれも壊れていました
-// （"が" が "か" になる、ZWJ が宙に浮く、肌色修飾子が剥がれる）。
+// TestTruncatePreservesGraphemeClusters verifies that characters made of
+// several runes are not split. While truncation cut by rune, every one of
+// these broke ("が" became "か", a ZWJ was left dangling, a skin-tone
+// modifier came off).
 func TestTruncateGraphemesPreservesClusters(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -121,44 +122,46 @@ func TestTruncateGraphemesPreservesClusters(t *testing.T) {
 		expected string
 	}{
 		{
-			// NFD（濁点を分離した形）。rune で切ると濁点が落ちて別の文字になる。
-			name:     "結合文字: 濁点を落とさない",
-			input:    "が゙ぎ゙ぐ", // "が" + 結合濁点 ...
+			// NFD (dakuten separated). Cutting by rune drops the dakuten and
+			// yields a different character.
+			name:     "combining mark: keeps the dakuten",
+			input:    "が゙ぎ゙ぐ", // "が" + combining dakuten ...
 			maxLen:   1,
 			suffix:   "",
 			expected: "が゙",
 		},
 		{
-			name:     "ZWJ絵文字: 家族を分断しない",
+			name:     "ZWJ emoji: does not split the family",
 			input:    "👨‍👩‍👧‍👦AB",
 			maxLen:   1,
 			suffix:   "",
 			expected: "👨‍👩‍👧‍👦",
 		},
 		{
-			name:     "ZWJ絵文字: 2文字目まで",
+			name:     "ZWJ emoji: up to the second character",
 			input:    "👨‍👩‍👧‍👦AB",
 			maxLen:   2,
 			suffix:   "...",
 			expected: "👨‍👩‍👧‍👦A...",
 		},
 		{
-			name:     "肌色修飾子を剥がさない",
+			name:     "keeps the skin tone modifier",
 			input:    "👋🏽👋🏽👋🏽",
 			maxLen:   1,
 			suffix:   "",
 			expected: "👋🏽",
 		},
 		{
-			// クラスタ数が maxLen 以内なら、rune 数が超えていてもそのまま返す。
-			name:     "クラスタ数が上限以内なら切らない",
+			// Within maxLen clusters, return unchanged even if the rune count
+			// exceeds it.
+			name:     "no truncation within the cluster limit",
 			input:    "👨‍👩‍👧‍👦",
 			maxLen:   2,
 			suffix:   "...",
 			expected: "👨‍👩‍👧‍👦",
 		},
 		{
-			name:     "サロゲートペア単体",
+			name:     "single surrogate pair",
 			input:    "𠮷野家",
 			maxLen:   2,
 			suffix:   "…",
