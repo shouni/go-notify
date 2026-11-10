@@ -16,43 +16,43 @@ func TestJoinURL(t *testing.T) {
 		want  string
 	}{
 		{
-			name:  "ベースとパスとIDを連結する",
+			name:  "joins base, path and ID",
 			base:  "https://example.com",
 			elems: []string{"/web/history", "job-1"},
 			want:  "https://example.com/web/history/job-1",
 		},
 		{
-			name:  "ベースの末尾スラッシュは重複しない",
+			name:  "trailing slash on base is not doubled",
 			base:  "https://example.com/",
 			elems: []string{"/history", "job-1"},
 			want:  "https://example.com/history/job-1",
 		},
 		{
-			name:  "ベースのパスを引き継ぐ",
+			name:  "keeps the base path",
 			base:  "https://example.com/app",
 			elems: []string{"history", "job-1"},
 			want:  "https://example.com/app/history/job-1",
 		},
 		{
-			name:  "パス要素なしならベースをそのまま返す",
+			name:  "returns the base when there are no path elements",
 			base:  "https://example.com/app",
 			elems: nil,
 			want:  "https://example.com/app",
 		},
 		{
-			name:  "ベースが空なら空",
+			name:  "empty base gives empty",
 			base:  "",
 			elems: []string{"/history", "job-1"},
 			want:  "",
 		},
 		{
-			name:  "パス要素のいずれかが空なら空",
+			name:  "any empty path element gives empty",
 			base:  "https://example.com",
 			elems: []string{"/history", ""},
 			want:  "",
 		},
 		{
-			name:  "URLとして解釈できないベースなら空",
+			name:  "unparsable base gives empty",
 			base:  "://example.com",
 			elems: []string{"/history", "job-1"},
 			want:  "",

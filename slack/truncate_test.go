@@ -14,84 +14,84 @@ func TestTruncateGraphemes(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "エッジケース: maxLenが負の値 (-1)", // ★ test name corrected
+			name:     "edge case: negative maxLen (-1)", // ★ test name corrected
 			input:    "テストテキスト",
 			maxLen:   -1,
 			suffix:   "...",
 			expected: "", // ★ expected value corrected (returns an empty string)
 		},
 		{
-			name:     "エッジケース: maxLenがゼロ (0)", // ★ test name corrected
+			name:     "edge case: zero maxLen (0)", // ★ test name corrected
 			input:    "テストテキスト",
 			maxLen:   0,
 			suffix:   "...",
 			expected: "", // ★ expected value corrected (returns an empty string)
 		},
 		{
-			name:     "エッジケース: maxLenがゼロ (0) かつ空文字列",
+			name:     "edge case: zero maxLen (0) with empty string",
 			input:    "",
 			maxLen:   0,
 			suffix:   "...",
 			expected: "", // the expected value was already correct
 		},
 		{
-			name:     "最大長より短い文字列",
+			name:     "shorter than max length",
 			input:    "Hello",
 			maxLen:   10,
 			suffix:   "...",
 			expected: "Hello",
 		},
 		{
-			name:     "最大長と等しい文字列",
+			name:     "equal to max length",
 			input:    "HelloWorld",
 			maxLen:   10,
 			suffix:   "...",
 			expected: "HelloWorld",
 		},
 		{
-			name:     "最大長を超える文字列 (サフィックスあり)",
+			name:     "longer than max length (with suffix)",
 			input:    "This is a long text.",
 			maxLen:   10,
 			suffix:   "...",
 			expected: "This is a...",
 		},
 		{
-			name:     "最大長を超える文字列 (サフィックスなし)",
+			name:     "longer than max length (no suffix)",
 			input:    "This is a long text.",
 			maxLen:   10,
 			suffix:   "",
 			expected: "This is a",
 		},
 		{
-			name:     "切り詰めた末尾がスペースの場合",
+			name:     "truncation ends on a space",
 			input:    "ABCDEFGHI JKLM",
 			maxLen:   11,
 			suffix:   "...",
 			expected: "ABCDEFGHI J...",
 		},
 		{
-			name:     "空文字列",
+			name:     "empty string",
 			input:    "",
 			maxLen:   5,
 			suffix:   "...",
 			expected: "",
 		},
 		{
-			name:     "マルチバイト文字を含む (rune長で切り詰め)",
+			name:     "multibyte text (truncated by rune length)",
 			input:    "あいうえお",
 			maxLen:   3,
 			suffix:   "...",
 			expected: "あいう...",
 		},
 		{
-			name:     "マルチバイト文字を最大長より多く指定",
+			name:     "multibyte text with max length above its length",
 			input:    "あいうえお",
 			maxLen:   7,
 			suffix:   "...",
 			expected: "あいうえお",
 		},
 		{
-			name:     "末尾に空白がある日本語",
+			name:     "Japanese with trailing whitespace",
 			input:    "テストテキスト　　です。 ",
 			maxLen:   6,
 			suffix:   "...",
@@ -124,28 +124,28 @@ func TestTruncateGraphemesPreservesClusters(t *testing.T) {
 		{
 			// NFD (dakuten separated). Cutting by rune drops the dakuten and
 			// yields a different character.
-			name:     "結合文字: 濁点を落とさない",
+			name:     "combining mark: keeps the dakuten",
 			input:    "が゙ぎ゙ぐ", // "が" + combining dakuten ...
 			maxLen:   1,
 			suffix:   "",
 			expected: "が゙",
 		},
 		{
-			name:     "ZWJ絵文字: 家族を分断しない",
+			name:     "ZWJ emoji: does not split the family",
 			input:    "👨‍👩‍👧‍👦AB",
 			maxLen:   1,
 			suffix:   "",
 			expected: "👨‍👩‍👧‍👦",
 		},
 		{
-			name:     "ZWJ絵文字: 2文字目まで",
+			name:     "ZWJ emoji: up to the second character",
 			input:    "👨‍👩‍👧‍👦AB",
 			maxLen:   2,
 			suffix:   "...",
 			expected: "👨‍👩‍👧‍👦A...",
 		},
 		{
-			name:     "肌色修飾子を剥がさない",
+			name:     "keeps the skin tone modifier",
 			input:    "👋🏽👋🏽👋🏽",
 			maxLen:   1,
 			suffix:   "",
@@ -154,14 +154,14 @@ func TestTruncateGraphemesPreservesClusters(t *testing.T) {
 		{
 			// Within maxLen clusters, return unchanged even if the rune count
 			// exceeds it.
-			name:     "クラスタ数が上限以内なら切らない",
+			name:     "no truncation within the cluster limit",
 			input:    "👨‍👩‍👧‍👦",
 			maxLen:   2,
 			suffix:   "...",
 			expected: "👨‍👩‍👧‍👦",
 		},
 		{
-			name:     "サロゲートペア単体",
+			name:     "single surrogate pair",
 			input:    "𠮷野家",
 			maxLen:   2,
 			suffix:   "…",

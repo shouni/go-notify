@@ -109,9 +109,9 @@ func TestNewNotifierDisabledOnBlankWebhookURL(t *testing.T) {
 		name       string
 		webhookURL string
 	}{
-		{name: "空文字", webhookURL: ""},
-		{name: "空白のみ", webhookURL: "   "},
-		{name: "改行のみ", webhookURL: "\n"},
+		{name: "empty", webhookURL: ""},
+		{name: "whitespace only", webhookURL: "   "},
+		{name: "newline only", webhookURL: "\n"},
 	}
 
 	for _, tt := range tests {
@@ -219,9 +219,9 @@ func TestNotifyLevelSetsAttachmentColor(t *testing.T) {
 		level notify.Level
 		want  string
 	}{
-		{name: "成功は good", level: notify.LevelSuccess, want: "good"},
-		{name: "失敗は danger", level: notify.LevelFailure, want: "danger"},
-		{name: "スキップは warning", level: notify.LevelSkipped, want: "warning"},
+		{name: "success is good", level: notify.LevelSuccess, want: "good"},
+		{name: "failure is danger", level: notify.LevelFailure, want: "danger"},
+		{name: "skipped is warning", level: notify.LevelSkipped, want: "warning"},
 	}
 
 	for _, tt := range tests {

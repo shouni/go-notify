@@ -15,76 +15,76 @@ func TestBodyWriters(t *testing.T) {
 		want  string
 	}{
 		{
-			name:  "Field はラベルを太字にする",
+			name:  "Field bolds the label",
 			build: func(b *notify.Body) { b.Field("Title", "サンプルタイトル") },
 			want:  "**Title:** サンプルタイトル",
 		},
 		{
-			name:  "Code は値を等幅にする",
+			name:  "Code renders the value monospace",
 			build: func(b *notify.Body) { b.Code("Command", "run_task") },
 			want:  "**Command:** `run_task`",
 		},
 		{
-			name:  "Link は表示テキスト付きリンクにする",
+			name:  "Link renders a link with display text",
 			build: func(b *notify.Body) { b.Link("History", "https://example.com/h/1", "job-1") },
 			want:  "**History:** [job-1](https://example.com/h/1)",
 		},
 		{
-			name:  "Link は表示テキスト省略時にURLを表示する",
+			name:  "Link shows the URL when display text is omitted",
 			build: func(b *notify.Body) { b.Link("History", "https://example.com/h/1", "") },
 			want:  "**History:** [https://example.com/h/1](https://example.com/h/1)",
 		},
 		{
-			name:  "Text は素の行を書き込む",
+			name:  "Text writes a plain line",
 			build: func(b *notify.Body) { b.Text("そのままの行") },
 			want:  "そのままの行",
 		},
 		{
-			name:  "URIField は gs:// オブジェクトを Console 詳細ページへのリンクにする",
+			name:  "URIField links a gs:// object to its Console details page",
 			build: func(b *notify.Body) { b.URIField("Output", "gs://bucket/job/audio.wav") },
 			want:  "**Output:** [gs://bucket/job/audio.wav](https://console.cloud.google.com/storage/browser/_details/bucket/job/audio.wav)",
 		},
 		{
-			name:  "URIField は末尾スラッシュの gs:// をバケットブラウザへのリンクにする",
+			name:  "URIField links a gs:// path with a trailing slash to the bucket browser",
 			build: func(b *notify.Body) { b.URIField("出力先", "gs://bucket/job/") },
 			want:  "**出力先:** [gs://bucket/job/](https://console.cloud.google.com/storage/browser/bucket/job/)",
 		},
 		{
-			name:  "URIField は gs:// 以外を素の値として並べる",
+			name:  "URIField lists non-gs:// values as plain text",
 			build: func(b *notify.Body) { b.URIField("Source", "https://example.com/article") },
 			want:  "**Source:** https://example.com/article",
 		},
 		{
-			name:  "URIField は前後の空白を除いてから判定する",
+			name:  "URIField trims surrounding whitespace before checking",
 			build: func(b *notify.Body) { b.URIField("Output", "  gs://bucket/obj  ") },
 			want:  "**Output:** [gs://bucket/obj](https://console.cloud.google.com/storage/browser/_details/bucket/obj)",
 		},
 		{
-			name:  "Heading は小見出しにする",
+			name:  "Heading renders a subheading",
 			build: func(b *notify.Body) { b.Heading("生成結果") },
 			want:  "## 生成結果",
 		},
 		{
-			name:  "Bullet は箇条書きにする",
+			name:  "Bullet renders a list item",
 			build: func(b *notify.Body) { b.Bullet("scene_01.png") },
 			want:  "- scene_01.png",
 		},
 		{
-			name: "Bullet は連続して並べられる",
+			name: "Bullets can be consecutive",
 			build: func(b *notify.Body) {
 				b.Bullet("scene_01.png").Bullet("scene_02.png")
 			},
 			want: "- scene_01.png\n- scene_02.png",
 		},
 		{
-			name: "Heading は既存の本文と1行空ける",
+			name: "Heading leaves a blank line after existing body",
 			build: func(b *notify.Body) {
 				b.Field("Title", "サンプル").Heading("生成結果").Bullet("scene_01.png")
 			},
 			want: "**Title:** サンプル\n\n## 生成結果\n- scene_01.png",
 		},
 		{
-			name: "複数行は改行で連結される",
+			name: "multiple lines are joined with newlines",
 			build: func(b *notify.Body) {
 				b.Code("Command", "run_task").Field("Title", "サンプルタイトル")
 			},
@@ -147,17 +147,17 @@ func TestBodyError(t *testing.T) {
 		want  string
 	}{
 		{
-			name:  "err が nil の場合は N/A",
+			name:  "nil err is N/A",
 			build: func(b *notify.Body) { b.Error("エラー内容", nil) },
 			want:  "**エラー内容:**\n" + notify.NotAvailable,
 		},
 		{
-			name:  "err の内容を表示する",
+			name:  "shows the error message",
 			build: func(b *notify.Body) { b.Error("エラー内容", errors.New("失敗しました")) },
 			want:  "**エラー内容:**\n失敗しました",
 		},
 		{
-			name: "本文がある場合は空行で区切る",
+			name: "separates from existing body with a blank line",
 			build: func(b *notify.Body) {
 				b.Code("Command", "run_task").Error("エラー内容", errors.New("失敗しました"))
 			},
@@ -235,9 +235,9 @@ func TestCodeSpan(t *testing.T) {
 		in   string
 		want string
 	}{
-		{name: "値を等幅で包む", in: "run_task", want: "`run_task`"},
-		{name: "バックティックを ' に置き換える", in: "ls `pwd`", want: "`ls 'pwd'`"},
-		{name: "空文字は空文字のまま", in: "", want: ""},
+		{name: "wraps the value in backticks", in: "run_task", want: "`run_task`"},
+		{name: "replaces backticks with '", in: "ls `pwd`", want: "`ls 'pwd'`"},
+		{name: "empty stays empty", in: "", want: ""},
 	}
 
 	for _, tt := range tests {
@@ -284,12 +284,12 @@ func TestBodyLinkOrField(t *testing.T) {
 		want  string
 	}{
 		{
-			name:  "URL があればリンクにする",
+			name:  "links when a URL is given",
 			build: func(b *notify.Body) { b.LinkOrField("Output", "https://example.com/o", "gs://bucket/o") },
 			want:  "**Output:** [gs://bucket/o](https://example.com/o)",
 		},
 		{
-			name:  "URL が無ければ素の値にする",
+			name:  "plain value without a URL",
 			build: func(b *notify.Body) { b.LinkOrField("Output", "", "gs://bucket/o") },
 			want:  "**Output:** gs://bucket/o",
 		},

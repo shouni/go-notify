@@ -35,9 +35,9 @@ func TestEnabled(t *testing.T) {
 		notifier notify.Notifier
 		want     bool
 	}{
-		{name: "nil は無効", notifier: nil, want: false},
-		{name: "Disabled は無効", notifier: notify.Disabled(), want: false},
-		{name: "実装は有効", notifier: &recorder{}, want: true},
+		{name: "nil is disabled", notifier: nil, want: false},
+		{name: "Disabled is disabled", notifier: notify.Disabled(), want: false},
+		{name: "implementation is enabled", notifier: &recorder{}, want: true},
 	}
 
 	for _, tt := range tests {

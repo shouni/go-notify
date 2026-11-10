@@ -15,47 +15,47 @@ func TestFormatMarkdownConversions(t *testing.T) {
 		want string
 	}{
 		{
-			name: "太字は1つのアスタリスクになる",
+			name: "bold becomes a single asterisk",
 			in:   "**重要**",
 			want: "*重要*",
 		},
 		{
-			name: "見出しは太字になる",
+			name: "headings become bold",
 			in:   "## 見出し",
 			want: "*見出し*",
 		},
 		{
-			name: "リストは中黒になる",
+			name: "list items become bullets",
 			in:   "- item",
 			want: "• item",
 		},
 		{
-			name: "リンクは <URL|表示テキスト> になる",
+			name: "links become <URL|text>",
 			in:   "[job-1](https://example.com/h/1)",
 			want: "<https://example.com/h/1|job-1>",
 		},
 		{
-			name: "URL に含まれる対応の取れた括弧はリンクの一部として扱う",
+			name: "balanced parentheses in a URL stay part of the link",
 			in:   "[詳細](https://example.com/a_(b)_c)",
 			want: "<https://example.com/a_(b)_c|詳細>",
 		},
 		{
-			name: "対応の取れない括弧を含む URL は Markdown のまま残す",
+			name: "URL with unbalanced parentheses stays Markdown",
 			in:   "[詳細](https://example.com/a_(b_c)",
 			want: "[詳細](https://example.com/a_(b_c)",
 		},
 		{
-			name: "既に mrkdwn のリンクはそのまま通る",
+			name: "existing mrkdwn links pass through",
 			in:   "<https://example.com/h/1|job-1>",
 			want: "<https://example.com/h/1|job-1>",
 		},
 		{
-			name: "メンションはエスケープされない",
+			name: "mentions are not escaped",
 			in:   "<@U012AB3CD> さん、<!here>",
 			want: "<@U012AB3CD> さん、<!here>",
 		},
 		{
-			name: "インラインコードはそのまま通る",
+			name: "inline code passes through",
 			in:   "`run_task`",
 			want: "`run_task`",
 		},
@@ -79,17 +79,17 @@ func TestFormatMarkdownEscapesSpecialCharacters(t *testing.T) {
 		want string
 	}{
 		{
-			name: "アンパサンドをエスケープする",
+			name: "escapes ampersands",
 			in:   "R&D チーム",
 			want: "R&amp;D チーム",
 		},
 		{
-			name: "不等号をエスケープする",
+			name: "escapes angle brackets",
 			in:   "expected <nil>, got 5 > 3",
 			want: "expected &lt;nil&gt;, got 5 &gt; 3",
 		},
 		{
-			name: "実体参照は二重エスケープしない",
+			name: "does not double-escape entities",
 			in:   "R&amp;D",
 			want: "R&amp;D",
 		},

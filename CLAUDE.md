@@ -134,8 +134,8 @@ If a genuinely effective option appears later (a footer toggle, say), adding `op
 
 ## Conventions
 
-- **English throughout (moved 2026-11-10; do not mix Japanese back in).** Comments, doc comments, error/log/panic messages and test assertion messages are English. Doc comments follow pkg.go.dev style (`Name does …`), one per exported *and* unexported symbol. Error strings follow ST1005 (lowercase, no trailing punctuation); wrap with `%w`.
-- **Japanese stays only as data**: the Slack-facing labels the owner reads (`errorLabel` 「エラー内容」, `reasonLabel` 「理由」, the footer's 「送信時刻」, the body truncation note), test fixtures and inputs, and `t.Run` / table `name` subtest names (not yet translated).
+- **English throughout (moved 2026-11-10; do not mix Japanese back in).** Comments, doc comments, error/log/panic messages, test assertion messages and subtest names (`t.Run` / table `name`) are English. Doc comments follow pkg.go.dev style (`Name does …`), one per exported *and* unexported symbol. Error strings follow ST1005 (lowercase, no trailing punctuation); wrap with `%w`.
+- **Japanese stays only as data**: the Slack-facing labels the owner reads (`errorLabel` 「エラー内容」, `reasonLabel` 「理由」, the footer's 「送信時刻」, the body truncation note) and test fixtures and inputs.
 - `README.md` is English and `README.ja.md` is its Japanese version; update the two together. `docs/slack.md` is English.
 - Constructors return `(*T, error)` and validate up front; where configuration is needed, use `type Option func(*T)` variadics.
 - Tests are black-box (`package notify_test` / `package slack_test`) driving a stub `httpkit.Poster`. Use white-box `_internal_test.go` only for unexported helpers — `slack/blocks_internal_test.go` is the one such file, because the Markdown conversion rules are worth testing directly rather than through a webhook payload.
